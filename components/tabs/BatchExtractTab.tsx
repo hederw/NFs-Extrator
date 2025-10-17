@@ -20,7 +20,6 @@ interface BatchExtractTabProps {
     onOpenLayoutModal: () => void;
     results: ExtractionResult[];
     setResults: React.Dispatch<React.SetStateAction<ExtractionResult[]>>;
-    onFilePreview: (file: File) => void;
     totalLiquidValue: number;
     hasSuccessfulResults: boolean;
 }
@@ -31,7 +30,6 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     onOpenLayoutModal,
     results,
     setResults,
-    onFilePreview,
     totalLiquidValue,
     hasSuccessfulResults
 }) => {
@@ -209,7 +207,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                         </div>
                     )}
                 </div>
-                <ResultsTable results={results} onFileClick={onFilePreview} />
+                <ResultsTable results={results} setResults={setResults} />
                 {hasSuccessfulResults && (
                     <div className="mt-4 pt-4 border-t border-gray-700 flex justify-end items-center gap-4">
                         <span className="text-gray-400 font-semibold">Valor Líquido Total:</span>

@@ -1,7 +1,5 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import useLocalStorage from './hooks/useLocalStorage';
-import ResultsTable from './components/ResultsTable';
-import PDFPreviewModal from './components/PDFPreviewModal';
 import LayoutModal from './components/LayoutModal';
 import BatchExtractTab from './components/tabs/BatchExtractTab';
 import CreateLayoutTab from './components/tabs/CreateLayoutTab';
@@ -22,7 +20,6 @@ function App() {
     const [selectedLayoutId, setSelectedLayoutId] = useState<string>(layouts[0]?.id || '');
     const [isLayoutModalOpen, setIsLayoutModalOpen] = useState(false);
     const [results, setResults] = useState<ExtractionResult[]>([]);
-    const [selectedFileForPreview, setSelectedFileForPreview] = useState<File | null>(null);
     const [activeTab, setActiveTab] = useState<ActiveTab>('batch');
 
     const handleLayoutSave = (layout: Omit<Layout, 'id'>, makeActive: boolean = false) => {
@@ -37,14 +34,6 @@ function App() {
         setSelectedLayoutId(id);
         setIsLayoutModalOpen(false);
     }
-    
-    const handleFilePreview = (file: File) => {
-        setSelectedFileForPreview(file);
-    };
-
-    const handleClosePreview = () => {
-        setSelectedFileForPreview(null);
-    };
 
     const hasSuccessfulResults = results.some(r => r.status === 'success');
 
@@ -100,7 +89,6 @@ function App() {
                                 onOpenLayoutModal={() => setIsLayoutModalOpen(true)}
                                 results={results}
                                 setResults={setResults}
-                                onFilePreview={handleFilePreview}
                                 totalLiquidValue={totalLiquidValue}
                                 hasSuccessfulResults={hasSuccessfulResults}
                             />
@@ -127,11 +115,6 @@ function App() {
                 onSelectLayout={handleLayoutSelect}
             />
 
-            <PDFPreviewModal
-                isOpen={!!selectedFileForPreview}
-                onClose={handleClosePreview}
-                file={selectedFileForPreview}
-            />
         </div>
     );
 }
