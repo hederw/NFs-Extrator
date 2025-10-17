@@ -14,8 +14,6 @@ declare const pdfjsLib: any;
 declare const XLSX: any;
 declare const JSZip: any;
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 interface BatchExtractTabProps {
     layouts: Layout[];
     selectedLayout: Layout | undefined;
@@ -40,6 +38,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     const [files, setFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [apiCallCount, setApiCallCount] = useState(0);
+    const [progress, setProgress] = useState(0);
 
     const convertPdfToImage = async (file: File): Promise<string> => {
         const fileBuffer = await file.arrayBuffer();
@@ -59,39 +58,43 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         return canvas.toDataURL('image/png').split(',')[1];
     };
 
-     const handleExtract = useCallback(async () => {
+    const handleExtract = useCallback(async () => {
         if (files.length === 0 || !selectedLayout) {
             alert('Por favor, selecione arquivos e um layout.');
             return;
         }
 
         setIsProcessing(true);
-        setApiCallCount(0);
+        setApiCallCount(files.length);
+        setProgress(0);
+
         const initialResults: ExtractionResult[] = files.map(file => ({
-            id: `${file.name}-${Date.now()}`,
+            id: `${file.name}-${Date.now()}-${Math.random()}`,
             file,
-            status: 'pending',
+            status: 'processing',
         }));
         setResults(initialResults);
 
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            setResults(current => current.map((r, index) => index === i ? { ...r, status: 'processing' } : r));
-            setApiCallCount(prev => prev + 1);
-
+        const processFileAndUpdateState = async (result: ExtractionResult) => {
             try {
-                const base64Image = await convertPdfToImage(file);
+                const base64Image = await convertPdfToImage(result.file);
                 const data = await extractInvoiceDataFromImage(base64Image, selectedLayout.prompt);
-                setResults(current => current.map((r, index) => index === i ? { ...r, status: 'success', data } : r));
+                setResults(current => current.map(r => 
+                    r.id === result.id ? { ...r, status: 'success', data } : r
+                ));
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-                setResults(current => current.map((r, index) => index === i ? { ...r, status: 'error', error: errorMessage } : r));
+                setResults(current => current.map(r => 
+                    r.id === result.id ? { ...r, status: 'error', error: errorMessage } : r
+                ));
+            } finally {
+                setProgress(p => p + 1);
             }
-            
-            if (i < files.length - 1) {
-                await delay(6000);
-            }
-        }
+        };
+        
+        const allPromises = initialResults.map(result => processFileAndUpdateState(result));
+
+        await Promise.all(allPromises);
 
         setIsProcessing(false);
     }, [files, selectedLayout, setResults]);
@@ -139,12 +142,14 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         setFiles(Array.from(selectedFiles));
         setResults([]);
         setApiCallCount(0);
+        setProgress(0);
     };
 
     const handleClearFiles = () => {
         setFiles([]);
         setResults([]);
         setApiCallCount(0);
+        setProgress(0);
     };
 
     const selectedLayoutName = selectedLayout?.name || "Nenhum layout selecionado";
@@ -185,7 +190,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                         disabled={isProcessing || files.length === 0 || !selectedLayout}
                         className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all text-lg flex items-center justify-center gap-2"
                     >
-                        {isProcessing ? <><Spinner /> Processando {apiCallCount} de {files.length}...</> : 'Iniciar Extração em Lote'}
+                        {isProcessing ? <><Spinner /> Processando {progress} de {files.length}...</> : 'Iniciar Extração em Lote'}
                     </button>
                 </div>
             </section>
