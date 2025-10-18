@@ -28,11 +28,25 @@ function App() {
         if(makeActive) {
             setSelectedLayoutId(newLayout.id);
         }
+        setIsLayoutModalOpen(false); // Fechar o modal após salvar
     };
     
     const handleLayoutSelect = (id: string) => {
         setSelectedLayoutId(id);
         setIsLayoutModalOpen(false);
+    }
+    
+    const handleLayoutDelete = (id: string) => {
+        if (window.confirm("Tem certeza que deseja excluir este layout?")) {
+            setLayouts(prev => {
+                const newLayouts = prev.filter(l => l.id !== id);
+                // Se o layout deletado era o selecionado, seleciona o primeiro da lista
+                if (selectedLayoutId === id) {
+                    setSelectedLayoutId(newLayouts[0]?.id || '');
+                }
+                return newLayouts;
+            });
+        }
     }
 
     const hasSuccessfulResults = results.some(r => r.status === 'success');
@@ -75,7 +89,7 @@ function App() {
                                         : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
                                 } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg transition-colors`}
                             >
-                                Criar Layout com IA
+                                Criar e Gerenciar Layouts
                             </button>
                         </nav>
                     </div>
@@ -84,9 +98,7 @@ function App() {
                     <div >
                         {activeTab === 'batch' && (
                             <BatchExtractTab 
-                                layouts={layouts}
                                 selectedLayout={selectedLayout}
-                                onOpenLayoutModal={() => setIsLayoutModalOpen(true)}
                                 results={results}
                                 setResults={setResults}
                                 totalLiquidValue={totalLiquidValue}
@@ -95,6 +107,9 @@ function App() {
                         )}
                         {activeTab === 'create' && (
                            <CreateLayoutTab 
+                                layouts={layouts}
+                                selectedLayout={selectedLayout}
+                                onOpenLayoutModal={() => setIsLayoutModalOpen(true)}
                                 onLayoutGenerated={(layout) => {
                                     handleLayoutSave(layout, true);
                                     // Mudar para a aba de lote para que o usuário possa usar o novo layout imediatamente
@@ -113,6 +128,7 @@ function App() {
                 layouts={layouts}
                 selectedLayoutId={selectedLayoutId}
                 onSelectLayout={handleLayoutSelect}
+                onDeleteLayout={handleLayoutDelete}
             />
 
         </div>

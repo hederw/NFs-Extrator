@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Layout } from '../types';
-import { CheckIcon } from './icons/CheckIcon'; // Assuming you'll create this icon
+import { CheckIcon } from './icons/CheckIcon';
+import { TrashIcon } from './icons/TrashIcon';
 
 interface LayoutModalProps {
   isOpen: boolean;
@@ -9,9 +10,10 @@ interface LayoutModalProps {
   layouts: Layout[];
   selectedLayoutId: string;
   onSelectLayout: (id: string) => void;
+  onDeleteLayout: (id: string) => void;
 }
 
-const LayoutModal: React.FC<LayoutModalProps> = ({ isOpen, onClose, onSave, layouts, selectedLayoutId, onSelectLayout }) => {
+const LayoutModal: React.FC<LayoutModalProps> = ({ isOpen, onClose, onSave, layouts, selectedLayoutId, onSelectLayout, onDeleteLayout }) => {
   const [name, setName] = useState('');
   const [prompt, setPrompt] = useState('');
 
@@ -32,7 +34,7 @@ const LayoutModal: React.FC<LayoutModalProps> = ({ isOpen, onClose, onSave, layo
         
         <div className="flex-shrink-0 mb-6">
             <h2 className="text-2xl font-bold text-blue-300">Gerenciar Layouts de Extração</h2>
-            <p className="text-sm text-gray-400">Selecione um layout existente ou crie um novo.</p>
+            <p className="text-sm text-gray-400">Selecione, edite, exclua ou crie um novo layout.</p>
         </div>
 
         <div className="flex flex-col md:flex-row gap-6 overflow-y-auto">
@@ -41,18 +43,29 @@ const LayoutModal: React.FC<LayoutModalProps> = ({ isOpen, onClose, onSave, layo
                 <h3 className="text-lg font-semibold mb-3 text-gray-300 border-b border-gray-700 pb-2">Layouts Salvos</h3>
                 <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
                     {layouts.map(layout => (
-                        <button
-                            key={layout.id}
-                            onClick={() => onSelectLayout(layout.id)}
-                            className={`w-full text-left p-3 rounded-md transition-colors flex items-center justify-between ${
-                                selectedLayoutId === layout.id
-                                ? 'bg-blue-600 text-white font-semibold'
-                                : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                            }`}
-                        >
-                            <span className="truncate">{layout.name}</span>
-                            {selectedLayoutId === layout.id && <CheckIcon />}
-                        </button>
+                        <div key={layout.id} className="group flex items-center gap-2">
+                            <button
+                                onClick={() => onSelectLayout(layout.id)}
+                                className={`flex-grow text-left p-3 rounded-md transition-colors flex items-center justify-between ${
+                                    selectedLayoutId === layout.id
+                                    ? 'bg-blue-600 text-white font-semibold'
+                                    : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+                                }`}
+                            >
+                                <span className="truncate">{layout.name}</span>
+                                {selectedLayoutId === layout.id && <CheckIcon />}
+                            </button>
+                             <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDeleteLayout(layout.id)
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-2 rounded-md bg-red-800/50 hover:bg-red-700 text-red-300 hover:text-white transition-opacity"
+                                aria-label={`Excluir layout ${layout.name}`}
+                            >
+                                <TrashIcon />
+                            </button>
+                        </div>
                     ))}
                 </div>
             </div>

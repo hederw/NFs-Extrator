@@ -3,6 +3,7 @@ import FileUploader from '../FileUploader';
 import Spinner from '../Spinner';
 import { generateLayoutPromptFromImage } from '../../services/geminiService';
 import type { Layout } from '../../types';
+import { CogIcon } from '../icons/CogIcon';
 
 // Declare pdfjsLib from global scope (CDN)
 declare const pdfjsLib: any;
@@ -10,9 +11,12 @@ declare const pdfjsLib: any;
 
 interface CreateLayoutTabProps {
     onLayoutGenerated: (layout: Omit<Layout, 'id'>) => void;
+    layouts: Layout[];
+    selectedLayout: Layout | undefined;
+    onOpenLayoutModal: () => void;
 }
 
-const CreateLayoutTab: React.FC<CreateLayoutTabProps> = ({ onLayoutGenerated }) => {
+const CreateLayoutTab: React.FC<CreateLayoutTabProps> = ({ onLayoutGenerated, layouts, selectedLayout, onOpenLayoutModal }) => {
     const [file, setFile] = useState<File | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -82,17 +86,35 @@ const CreateLayoutTab: React.FC<CreateLayoutTabProps> = ({ onLayoutGenerated }) 
         onLayoutGenerated({ name: layoutName, prompt: generatedPrompt });
         handleClear(); // Limpa o formulário após salvar
     }
+    
+    const selectedLayoutName = selectedLayout?.name || "Nenhum layout selecionado";
 
     return (
         <div className="flex flex-col gap-8">
             <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-2xl font-semibold text-blue-300 mb-1">1. Envie um PDF de Exemplo</h2>
-                <p className="text-gray-400 mb-4 text-sm">A IA irá analisar este arquivo para aprender a estrutura dos dados.</p>
-                <FileUploader onFilesSelected={handleFileSelected} onClear={handleClear} />
+                <h2 className="text-2xl font-semibold text-blue-300 mb-4">1. Gerenciar Layouts</h2>
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                    <p className="text-gray-400 mt-2 flex-grow">
+                        O layout selecionado aqui será usado para a extração em lote. Você pode gerenciar seus layouts salvos ou criar um novo usando IA.
+                    </p>
+                    <button
+                        onClick={onOpenLayoutModal}
+                        className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-3 px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-lg font-semibold transition-colors"
+                    >
+                        <CogIcon />
+                        <span>Layout Ativo: <span className="font-bold text-blue-300">{selectedLayoutName}</span></span>
+                    </button>
+                </div>
+            </section>
+        
+            <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 className="text-2xl font-semibold text-blue-300 mb-1">2. Criar Layout com IA: Envie um PDF de Exemplo</h2>
+                <p className="text-gray-400 mb-4 text-sm">A IA irá analisar este arquivo para aprender a estrutura dos dados e gerar um novo layout.</p>
+                <FileUploader onFilesSelected={handleFileSelected} onClear={handleClear} fileCount={file ? 1 : 0} />
             </section>
 
             <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-2xl font-semibold text-blue-300 mb-4">2. Gere o Prompt de Extração</h2>
+                <h2 className="text-2xl font-semibold text-blue-300 mb-4">3. Gere o Prompt de Extração</h2>
                  <button
                     onClick={handleGeneratePrompt}
                     disabled={!file || isProcessing}
@@ -105,14 +127,14 @@ const CreateLayoutTab: React.FC<CreateLayoutTabProps> = ({ onLayoutGenerated }) 
             
             {generatedPrompt && (
                 <section className="bg-gray-800 p-6 rounded-lg shadow-lg animate-fade-in">
-                    <h2 className="text-2xl font-semibold text-blue-300 mb-4">3. Salve o Novo Layout</h2>
+                    <h2 className="text-2xl font-semibold text-blue-300 mb-4">4. Salve o Novo Layout</h2>
                      <div className="mb-4">
-                        <label htmlFor="layoutName" className="block text-sm font-medium text-gray-300 mb-1">
+                        <label htmlFor="layoutNameCreate" className="block text-sm font-medium text-gray-300 mb-1">
                         Nome do Layout
                         </label>
                         <input
                             type="text"
-                            id="layoutName"
+                            id="layoutNameCreate"
                             value={layoutName}
                             onChange={(e) => setLayoutName(e.target.value)}
                             className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
@@ -121,11 +143,11 @@ const CreateLayoutTab: React.FC<CreateLayoutTabProps> = ({ onLayoutGenerated }) 
                         />
                     </div>
                      <div className="mb-4">
-                        <label htmlFor="layoutPrompt" className="block text-sm font-medium text-gray-300 mb-1">
+                        <label htmlFor="layoutPromptCreate" className="block text-sm font-medium text-gray-300 mb-1">
                         Prompt Gerado (editável)
                         </label>
                         <textarea
-                            id="layoutPrompt"
+                            id="layoutPromptCreate"
                             value={generatedPrompt}
                             onChange={(e) => setGeneratedPrompt(e.target.value)}
                             rows={5}
@@ -137,7 +159,7 @@ const CreateLayoutTab: React.FC<CreateLayoutTabProps> = ({ onLayoutGenerated }) 
                         onClick={handleSaveLayout}
                         className="w-full md:w-auto px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-md transition-colors text-lg"
                     >
-                        Salvar Layout e Usar
+                        Salvar Layout e Mudar para Aba de Extração
                     </button>
                 </section>
             )}

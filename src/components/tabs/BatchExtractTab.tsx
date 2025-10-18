@@ -1,10 +1,9 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import FileUploader from '../FileUploader';
 import ResultsTable from '../ResultsTable';
-import { CogIcon } from '../icons/CogIcon';
+import { FileIcon } from '../icons/FileIcon';
 import { ExcelIcon } from '../icons/ExcelIcon';
 import { DownloadIcon } from '../icons/DownloadIcon';
-import { InformationCircleIcon } from '../icons/InformationCircleIcon';
 import Spinner from '../Spinner';
 import { extractInvoiceDataFromImage } from '../../services/geminiService';
 import type { Layout, ExtractionResult } from '../../types';
@@ -15,9 +14,7 @@ declare const XLSX: any;
 declare const JSZip: any;
 
 interface BatchExtractTabProps {
-    layouts: Layout[];
     selectedLayout: Layout | undefined;
-    onOpenLayoutModal: () => void;
     results: ExtractionResult[];
     setResults: React.Dispatch<React.SetStateAction<ExtractionResult[]>>;
     totalLiquidValue: number;
@@ -25,9 +22,7 @@ interface BatchExtractTabProps {
 }
 
 const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
-    layouts,
     selectedLayout,
-    onOpenLayoutModal,
     results,
     setResults,
     totalLiquidValue,
@@ -35,7 +30,6 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
 }) => {
     const [files, setFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [apiCallCount, setApiCallCount] = useState(0);
     const [progress, setProgress] = useState(0);
 
     const convertPdfToImage = async (file: File): Promise<string> => {
@@ -58,12 +52,11 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
 
     const handleExtract = useCallback(async () => {
         if (files.length === 0 || !selectedLayout) {
-            alert('Por favor, selecione arquivos e um layout.');
+            alert('Por favor, selecione arquivos e um layout na aba "Criar e Gerenciar Layouts".');
             return;
         }
 
         setIsProcessing(true);
-        setApiCallCount(files.length);
         setProgress(0);
 
         const initialResults: ExtractionResult[] = files.map(file => ({
@@ -90,9 +83,10 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
             }
         };
         
-        const allPromises = initialResults.map(result => processFileAndUpdateState(result));
-
-        await Promise.all(allPromises);
+        // Process files sequentially to avoid rate limiting issues
+        for (const result of initialResults) {
+            await processFileAndUpdateState(result);
+        }
 
         setIsProcessing(false);
     }, [files, selectedLayout, setResults]);
@@ -139,63 +133,69 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
      const handleFilesSelected = (selectedFiles: FileList) => {
         setFiles(Array.from(selectedFiles));
         setResults([]);
-        setApiCallCount(0);
         setProgress(0);
     };
 
+    // FIX: Correct arrow function syntax from `()_=>` to `() =>`.
     const handleClearFiles = () => {
         setFiles([]);
         setResults([]);
-        setApiCallCount(0);
         setProgress(0);
     };
 
-    const selectedLayoutName = selectedLayout?.name || "Nenhum layout selecionado";
 
     return (
         <div className="flex flex-col gap-8">
-            <section className="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col gap-6">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <h2 className="text-2xl font-semibold mb-3 text-blue-300">1. Configuração</h2>
-                        <button
-                            onClick={onOpenLayoutModal}
-                            className="w-full md:w-auto flex items-center justify-center gap-3 px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-lg font-semibold transition-colors"
+            <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
+                 <h2 className="text-2xl font-semibold mb-4 text-blue-300">1. Upload de Arquivos e Extração</h2>
+                 <div className="flex flex-col md:flex-row gap-4 items-start">
+                    {/* Coluna Esquerda: Uploader e Botão */}
+                    <div className="w-full md:w-1/3 flex flex-col gap-4">
+                       <FileUploader onFilesSelected={handleFilesSelected} fileCount={files.length} compact />
+                       <button
+                            onClick={handleExtract}
+                            disabled={isProcessing || files.length === 0 || !selectedLayout}
+                            className="w-auto self-start bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-all text-base flex items-center justify-center gap-2"
                         >
-                            <CogIcon />
-                            <span>Layout: <span className="font-bold text-blue-300">{selectedLayoutName}</span></span>
+                            {isProcessing ? <><Spinner /> Processando {progress}/{files.length}...</> : 'Iniciar Extração'}
                         </button>
                     </div>
-                     <div 
-                       className="bg-gray-800 p-3 rounded-lg flex items-center gap-3 text-sm border border-gray-700"
-                       title="As chamadas à API são contadas por arquivo processado na sessão atual. A cota oficial está no seu painel do Google AI Studio."
-                    >
-                        <InformationCircleIcon />
-                        <span>
-                            Chamadas à API (sessão): <span className="font-bold text-lg text-blue-300">{apiCallCount}</span>
-                        </span>
+
+                    {/* Coluna Direita: Lista de Arquivos */}
+                    <div className="w-full md:w-2/3">
+                        {files.length > 0 ? (
+                             <div className="w-full text-sm text-gray-300">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h4 className="font-semibold">{files.length} arquivo(s) selecionado(s)</h4>
+                                     <button
+                                        onClick={handleClearFiles}
+                                        className="text-xs text-red-400 hover:text-white hover:bg-red-500 font-semibold py-1 px-2 rounded-md transition-colors flex items-center"
+                                        aria-label="Limpar arquivos selecionados"
+                                    >
+                                        Limpar
+                                    </button>
+                                </div>
+                                <div className="max-h-40 overflow-y-auto bg-gray-900/60 p-3 rounded-md space-y-2 border border-gray-700">
+                                  {files.map((file, index) => (
+                                    <div key={index} className="flex items-center gap-2 bg-gray-800/50 p-2 rounded">
+                                        <FileIcon />
+                                        <span className="truncate flex-grow" title={file.name}>{file.name}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                            </div>
+                        ) : (
+                             <div className="flex items-center justify-center h-full bg-gray-900/30 rounded-lg border border-gray-700">
+                                <p className="text-gray-500">Aguardando arquivos...</p>
+                            </div>
+                        )}
                     </div>
-                </div>
-
-                <div>
-                    <h2 className="text-2xl font-semibold mb-3 text-blue-300">2. Upload de Arquivos</h2>
-                    <FileUploader onFilesSelected={handleFilesSelected} onClear={handleClearFiles} />
-                </div>
-
-                <div>
-                    <button
-                        onClick={handleExtract}
-                        disabled={isProcessing || files.length === 0 || !selectedLayout}
-                        className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all text-lg flex items-center justify-center gap-2"
-                    >
-                        {isProcessing ? <><Spinner /> Processando {progress} de {files.length}...</> : 'Iniciar Extração em Lote'}
-                    </button>
                 </div>
             </section>
 
             <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-semibold text-blue-300">Resultados da Extração</h2>
+                    <h2 className="text-2xl font-semibold text-blue-300">2. Resultados da Extração</h2>
                     {hasSuccessfulResults && (
                         <div className="flex gap-2">
                             <button onClick={handleExportExcel} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-sm font-medium py-2 px-3 rounded-lg transition-colors">
