@@ -5,9 +5,10 @@ import { ExcelIcon } from '../icons/ExcelIcon';
 import { DownloadIcon } from '../icons/DownloadIcon';
 import { SaveIcon } from '../icons/SaveIcon';
 import { CogIcon } from '../icons/CogIcon';
+import { ChevronDownIcon } from '../icons/ChevronDownIcon';
 import Spinner from '../Spinner';
 import { extractInvoiceDataFromImage } from '../../services/geminiService';
-import type { Layout, ExtractionResult, InvoiceData, ValidationResult } from '../../types';
+import type { Layout, ExtractionResult, InvoiceData, ValidationResult, GroundTruth } from '../../types';
 
 declare const pdfjsLib: any;
 declare const XLSX: any;
@@ -23,10 +24,44 @@ interface BatchExtractTabProps {
     onSaveExtraction: (name: string) => void;
 }
 
-interface GroundTruth {
-    file: File | null;
-    data: InvoiceData[];
-}
+const initialGroundTruth: GroundTruth = { file: null, data: [], status: 'idle', message: 'Aguardando arquivo...' };
+
+const GroundTruthStatus: React.FC<{ truth: GroundTruth, name: string }> = ({ truth, name }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    
+    return (
+        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700 flex flex-col gap-2">
+            <div className="flex justify-between items-start gap-2">
+                <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-gray-300 truncate" title={`Gabarito "${name}"`}>Gabarito "{name}"</p>
+                    {truth.status === 'idle' && <p className="text-gray-500 text-sm truncate">{truth.message}</p>}
+                    {truth.status === 'success' && <p className="text-green-400 text-sm truncate" title={truth.message}>{truth.message}</p>}
+                    {truth.status === 'error' && <p className="text-red-400 text-sm truncate" title={truth.message}>{truth.message}</p>}
+                </div>
+                {truth.detectedColumns && truth.detectedColumns.length > 0 && (
+                    <button
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        className="p-1 rounded-full hover:bg-gray-700 transition-colors flex-shrink-0"
+                        aria-label="Mostrar/ocultar colunas detectadas"
+                        aria-expanded={isExpanded}
+                    >
+                        <ChevronDownIcon className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                )}
+            </div>
+            {isExpanded && truth.detectedColumns && truth.detectedColumns.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-gray-700/50 animate-fade-in">
+                    <p className="text-xs font-semibold text-gray-400 mb-1">Colunas Detectadas:</p>
+                    <div className="flex flex-wrap gap-1">
+                        {truth.detectedColumns.map((col, index) => (
+                            <span key={index} className="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded-full">{col}</span>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     selectedLayout,
@@ -43,8 +78,8 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     const [validationStatus, setValidationStatus] = useState<Record<string, ValidationResult> | null>(null);
     const [folderName, setFolderName] = useState('');
 
-    const [contasAPagar, setContasAPagar] = useState<GroundTruth>({ file: null, data: [] });
-    const [razaoLoja, setRazaoLoja] = useState<GroundTruth>({ file: null, data: [] });
+    const [contasAPagar, setContasAPagar] = useState<GroundTruth>(initialGroundTruth);
+    const [razaoLoja, setRazaoLoja] = useState<GroundTruth>(initialGroundTruth);
 
 
     const convertPdfToImage = async (file: File): Promise<string> => {
@@ -61,7 +96,11 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         return canvas.toDataURL('image/png').split(',')[1];
     };
     
-    const parseGroundTruthFile = (file: File, mappings: { prestador: string, valor: string }, setter: React.Dispatch<React.SetStateAction<GroundTruth>>) => {
+    const parseGroundTruthFile = (
+        file: File,
+        mappings: { prestador: string, valor: string },
+        setter: React.Dispatch<React.SetStateAction<GroundTruth>>
+    ) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
@@ -69,43 +108,74 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                 const workbook = XLSX.read(data, { type: 'array' });
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                const json = XLSX.utils.sheet_to_json(worksheet) as any[];
-
+    
+                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null }) as any[][];
+                
+                let headerIndex = -1;
+                let headers: string[] = [];
+                
+                // Find the first non-empty row to use as header
+                for (let i = 0; i < rows.length; i++) {
+                    const potentialHeaders = rows[i].map((cell: any) => cell ? String(cell).trim() : '');
+                    if (potentialHeaders.some(h => h)) { // if the row is not completely empty
+                        headerIndex = i;
+                        headers = potentialHeaders;
+                        break;
+                    }
+                }
+                
+                if (headerIndex === -1) {
+                    setter({ file, data: [], status: 'error', message: `Erro: Nenhuma linha de cabeçalho encontrada. O arquivo parece estar vazio.`, detectedColumns: [] });
+                    return;
+                }
+    
+                const detectedColumns = headers.filter(h => h); // All non-empty cells in the header row
+                const dataRows = rows.slice(headerIndex + 1);
+    
+                const json = dataRows
+                    .map(row => {
+                        const obj: { [key: string]: any } = {};
+                        headers.forEach((header, index) => {
+                            if (header) { // Only map columns with a header
+                                 obj[header] = row[index];
+                            }
+                        });
+                        return obj;
+                    })
+                    .filter(obj => Object.values(obj).some(val => val !== null && val !== undefined && String(val).trim() !== ''));
+                
+                if (json.length === 0) {
+                     setter({ file, data: [], status: 'error', message: `Aviso: Nenhuma linha de dados encontrada após o cabeçalho.`, detectedColumns });
+                     return;
+                }
+    
+                if (!headers.includes(mappings.prestador) || !headers.includes(mappings.valor)) {
+                    setter({ file, data: [], status: 'error', message: `Erro: Colunas "${mappings.prestador}" e/ou "${mappings.valor}" não encontradas.`, detectedColumns });
+                    return;
+                }
+                
                 const formattedData = json.map(row => {
                     const prestadorValue = row[mappings.prestador] ? String(row[mappings.prestador]).trim() : '';
                     const valorValue = row[mappings.valor];
                     
                     let valorLiquido: number | null = null;
                     if (valorValue !== undefined && valorValue !== null) {
-                        const valueStr = String(valorValue)
-                            .replace(/R\$\s?/g, '')
-                            .replace(/\./g, '')      
-                            .replace(',', '.')      
-                            .trim();
+                        const valueStr = String(valorValue).replace(/R\$\s?/g, '').replace(/\./g, '').replace(',', '.').trim();
                         const parsedFloat = parseFloat(valueStr);
-                        if (!isNaN(parsedFloat)) {
-                            valorLiquido = parsedFloat;
-                        }
+                        if (!isNaN(parsedFloat)) valorLiquido = parsedFloat;
                     }
-
-                    return {
-                        prestador: prestadorValue,
-                        valorLiquido: valorLiquido,
-                        numeroNota: '',
-                        dataEmissao: '',
-                    };
+    
+                    return { prestador: prestadorValue, valorLiquido, numeroNota: '', dataEmissao: '' };
                 }).filter(item => item.prestador && item.valorLiquido !== null) as InvoiceData[];
                 
-                setter({ file, data: formattedData });
+                setter({ file, data: formattedData, status: 'success', message: `✓ ${file.name} (${formattedData.length} registros válidos)`, detectedColumns });
             } catch (error) {
                 console.error("Erro ao processar o arquivo de gabarito:", file.name, error);
-                alert(`Ocorreu um erro ao ler o arquivo de gabarito "${file.name}". Verifique se o formato e os nomes das colunas estão corretos.`);
-                setter({ file: null, data: [] });
+                setter({ file, data: [], status: 'error', message: `Erro ao ler "${file.name}". Verifique o formato.`, detectedColumns: [] });
             }
         };
         reader.onerror = () => {
-            alert(`Não foi possível ler o arquivo ${file.name}.`);
-            setter({ file: null, data: [] });
+             setter({ file: null, data: [], status: 'error', message: `Não foi possível ler o arquivo ${file.name}.`, detectedColumns: [] });
         }
         reader.readAsArrayBuffer(file);
     };
@@ -184,8 +254,8 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         setResults([]);
         setProgress(0);
         setValidationStatus(null);
-        setContasAPagar({ file: null, data: [] });
-        setRazaoLoja({ file: null, data: [] });
+        setContasAPagar(initialGroundTruth);
+        setRazaoLoja(initialGroundTruth);
         setFolderName('');
     };
 
@@ -199,11 +269,15 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         const contasFile = allFiles.find(f => f.name.toLowerCase().startsWith('contas a pagar'));
         if(contasFile) {
             parseGroundTruthFile(contasFile, { prestador: 'Razão Social', valor: 'Valor Pagto R$' }, setContasAPagar);
+        } else {
+            setContasAPagar({ ...initialGroundTruth, message: 'Arquivo não encontrado na pasta.' });
         }
 
         const razaoFile = allFiles.find(f => f.name.toLowerCase().startsWith('razao loja'));
         if(razaoFile) {
             parseGroundTruthFile(razaoFile, { prestador: 'Histórico', valor: 'Débito' }, setRazaoLoja);
+        } else {
+            setRazaoLoja({ ...initialGroundTruth, message: 'Arquivo não encontrado na pasta.' });
         }
     };
 
@@ -293,20 +367,8 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                         <h2 className="text-2xl font-semibold text-blue-300 mb-4">2. Selecionar Pasta</h2>
                         <FolderUploader onFilesSelected={handleFolderSelection} onClear={handleClear} onFolderNameDetected={setFolderName} />
                          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                            <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
-                                <p className="font-semibold text-gray-300">Gabarito "Contas a Pagar"</p>
-                                {contasAPagar.file
-                                    ? <p className="text-green-400 truncate" title={contasAPagar.file.name}>✓ {contasAPagar.file.name} ({contasAPagar.data.length} registros válidos)</p>
-                                    : <p className="text-gray-500">Aguardando arquivo...</p>
-                                }
-                            </div>
-                            <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
-                                <p className="font-semibold text-gray-300">Gabarito "Razao Loja"</p>
-                                {razaoLoja.file
-                                    ? <p className="text-green-400 truncate" title={razaoLoja.file.name}>✓ {razaoLoja.file.name} ({razaoLoja.data.length} registros válidos)</p>
-                                    : <p className="text-gray-500">Aguardando arquivo...</p>
-                                }
-                            </div>
+                            <GroundTruthStatus truth={contasAPagar} name="Contas a Pagar" />
+                            <GroundTruthStatus truth={razaoLoja} name="Razao Loja" />
                         </div>
                     </div>
                 </div>

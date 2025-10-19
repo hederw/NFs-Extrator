@@ -46,6 +46,14 @@ export interface ValidationResult {
     expectedValue?: number;
 }
 
+export interface GroundTruth {
+  file: File | null;
+  data: InvoiceData[];
+  status: 'idle' | 'success' | 'error';
+  message: string;
+  detectedColumns?: string[]; // Adicionado para feedback ao usuário
+}
+
 // FIX: Add missing types for comparison results and history.
 export type FieldComparisonStatus = 'match' | 'mismatch' | 'missing';
 
