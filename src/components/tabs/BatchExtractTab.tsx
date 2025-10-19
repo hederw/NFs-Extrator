@@ -41,6 +41,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
     const [validationStatus, setValidationStatus] = useState<Record<string, ValidationResult> | null>(null);
+    const [folderName, setFolderName] = useState('');
 
     const [contasAPagar, setContasAPagar] = useState<GroundTruth>({ file: null, data: [] });
     const [razaoLoja, setRazaoLoja] = useState<GroundTruth>({ file: null, data: [] });
@@ -185,6 +186,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         setValidationStatus(null);
         setContasAPagar({ file: null, data: [] });
         setRazaoLoja({ file: null, data: [] });
+        setFolderName('');
     };
 
     const handleFolderSelection = (fileList: FileList) => {
@@ -223,7 +225,10 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         const worksheet = XLSX.utils.json_to_sheet(worksheetData);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Notas Fiscais');
-        XLSX.writeFile(workbook, 'Extracao_Notas_Fiscais.xlsx');
+        
+        const safeFolderName = folderName.trim().replace(/[^a-zA-Z0-9_.-]/g, '_') || 'Lote';
+        const fileName = `Extracao_${safeFolderName}.xlsx`;
+        XLSX.writeFile(workbook, fileName);
     };
 
     const handleDownloadRenamed = async () => {
@@ -286,7 +291,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
 
                     <div className="md:col-span-2">
                         <h2 className="text-2xl font-semibold text-blue-300 mb-4">2. Selecionar Pasta</h2>
-                        <FolderUploader onFilesSelected={handleFolderSelection} onClear={handleClear} />
+                        <FolderUploader onFilesSelected={handleFolderSelection} onClear={handleClear} onFolderNameDetected={setFolderName} />
                          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                             <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
                                 <p className="font-semibold text-gray-300">Gabarito "Contas a Pagar"</p>

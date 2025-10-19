@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { UploadIcon } from './icons/UploadIcon';
 import { FileIcon } from './icons/FileIcon';
 import { ExcelIcon } from './icons/ExcelIcon';
@@ -6,9 +6,10 @@ import { ExcelIcon } from './icons/ExcelIcon';
 interface FolderUploaderProps {
   onFilesSelected: (files: FileList) => void;
   onClear: () => void;
+  onFolderNameDetected: (name: string) => void;
 }
 
-const FolderUploader: React.FC<FolderUploaderProps> = ({ onFilesSelected, onClear }) => {
+const FolderUploader: React.FC<FolderUploaderProps> = ({ onFilesSelected, onClear, onFolderNameDetected }) => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -48,6 +49,11 @@ const FolderUploader: React.FC<FolderUploaderProps> = ({ onFilesSelected, onClea
 
     return { pdfs, excels, folderName };
   }, [selectedFiles]);
+
+  useEffect(() => {
+    onFolderNameDetected(folderName);
+  }, [folderName, onFolderNameDetected]);
+
 
   return (
     <div
