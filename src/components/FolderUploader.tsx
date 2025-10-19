@@ -60,16 +60,19 @@ const FolderUploader: React.FC<FolderUploaderProps> = ({ onFilesSelected, onClea
       onClick={triggerFolderSelect}
       className="flex flex-col justify-center items-center w-full p-6 border-2 border-dashed rounded-lg cursor-pointer transition-colors border-gray-600 bg-gray-700/50 hover:bg-gray-700 hover:border-blue-400"
     >
-      <input 
-        ref={inputRef} 
-        type="file" 
-        className="hidden" 
+      <input
+        ref={inputRef}
+        type="file"
+        className="hidden"
         onChange={handleFileChange}
-        // These attributes enable folder selection
-        webkitdirectory="" 
-        mozdirectory=""
-        directory=""
         multiple
+        // These attributes enable folder selection and are non-standard.
+        // We use a type assertion to avoid TypeScript errors.
+        {...{
+          webkitdirectory: "",
+          mozdirectory: "",
+          directory: ""
+        } as any}
       />
       {selectedFiles.length === 0 ? (
          <div className="text-center">

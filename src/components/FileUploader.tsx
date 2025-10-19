@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { UploadIcon } from './icons/UploadIcon';
-import { FileIcon } from './icons/FileIcon';
 
 interface FileUploaderProps {
   onFilesSelected: (files: FileList) => void;

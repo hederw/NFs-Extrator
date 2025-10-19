@@ -65,8 +65,11 @@ export const extractInvoiceDataFromImage = async (base64Image: string, userPromp
             }
         });
 
-        const jsonText = response.text.trim();
-        const parsedData = JSON.parse(jsonText) as InvoiceData;
+        const jsonText = response.text;
+        if (!jsonText) {
+            throw new Error("A IA retornou uma resposta de texto vazia ou inválida.");
+        }
+        const parsedData = JSON.parse(jsonText.trim()) as InvoiceData;
 
         if (!parsedData.prestador || !parsedData.numeroNota || !parsedData.dataEmissao || parsedData.valorLiquido == null) {
             throw new Error("Resposta da IA está incompleta ou mal formatada.");
@@ -110,12 +113,12 @@ export const generateLayoutPromptFromImage = async (base64Image: string): Promis
             contents: { parts: [imagePart, textPart] },
         });
 
-        const generatedPrompt = response.text.trim();
+        const generatedPrompt = response.text;
         if (!generatedPrompt) {
             throw new Error("A IA não conseguiu gerar um prompt. A imagem pode estar ilegível.");
         }
         
-        return generatedPrompt;
+        return generatedPrompt.trim();
 
     } catch (error) {
        throw new Error(handleApiError(error));

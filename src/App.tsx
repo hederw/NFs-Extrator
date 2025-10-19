@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import useLocalStorage from './hooks/useLocalStorage';
 import LayoutModal from './components/LayoutModal';
 import BatchExtractTab from './components/tabs/BatchExtractTab';
