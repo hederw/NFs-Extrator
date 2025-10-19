@@ -1,5 +1,5 @@
 {
-  "name": "Extrator de Notas Fiscais com IA",
-  "description": "Um aplicativo para extrair dados de notas fiscais de diferentes layouts municipais usando IA, exportar para Excel e renomear os arquivos PDF.",
+  "name": "Extrator de Notas Fiscais",
+  "description": "Um aplicativo para extrair dados de notas fiscais usando IA, validar com planilhas de referência e exportar os resultados.",
   "requestFramePermissions": []
 }

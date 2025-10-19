@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import type { ExtractionResult, InvoiceData, StoredExtractionResult } from '../types';
+import type { ExtractionResult, InvoiceData, StoredExtractionResult, ValidationResult } from '../types';
 import Spinner from './Spinner';
 
 interface ResultsTableProps {
   results: (ExtractionResult | StoredExtractionResult)[];
   setResults?: React.Dispatch<React.SetStateAction<ExtractionResult[]>>;
+  validationStatus?: Record<string, ValidationResult>;
 }
 
 const StatusIndicator: React.FC<{ status: ExtractionResult['status'] }> = ({ status }) => {
@@ -22,7 +23,44 @@ const StatusIndicator: React.FC<{ status: ExtractionResult['status'] }> = ({ sta
     }
 };
 
-const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults }) => {
+const ValidationBadge: React.FC<{ validation?: ValidationResult }> = ({ validation }) => {
+    if (!validation) return <span className="text-gray-500">-</span>;
+
+    const { status, source, expectedValue } = validation;
+    let bgColor, textColor, text, title;
+
+    switch (status) {
+        case 'OK':
+            bgColor = 'bg-green-800/50';
+            textColor = 'text-green-300';
+            text = '✓ OK';
+            title = `Encontrado em: ${source}`;
+            break;
+        case 'Divergente':
+            bgColor = 'bg-orange-800/50';
+            textColor = 'text-orange-300';
+            text = '⚠ Divergente';
+            title = `Encontrado em: ${source}, Valor esperado: ${expectedValue?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+            break;
+        case 'Não Encontrado':
+            bgColor = 'bg-red-800/50';
+            textColor = 'text-red-300';
+            text = '✗ Não Encontrado';
+            title = 'Não encontrado em nenhum gabarito';
+            break;
+    }
+
+    return (
+        <span
+            className={`px-2 py-1 text-xs font-medium rounded-full ${bgColor} ${textColor}`}
+            title={title}
+        >
+            {text}
+        </span>
+    );
+};
+
+const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults, validationStatus }) => {
   const [pdfUrls, setPdfUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -107,6 +145,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults }) => {
           <tr>
             <th scope="col" className="px-4 py-3">Arquivo</th>
             <th scope="col" className="px-4 py-3">Status</th>
+            <th scope="col" className="px-4 py-3">Validação</th>
             <th scope="col" className="px-4 py-3">Prestador</th>
             <th scope="col" className="px-4 py-3">Nº da Nota</th>
             <th scope="col" className="px-4 py-3">Data Emissão</th>
@@ -117,6 +156,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults }) => {
           {results.map((result) => {
             const isStored = !('file' in result);
             const fileName = isStored ? result.fileName : result.file.name;
+            const validation = validationStatus?.[result.id];
 
             return (
                 <tr key={result.id} className="border-b border-gray-700 hover:bg-gray-700/50">
@@ -137,6 +177,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults }) => {
                     )}
                 </td>
                 <td className="px-4 py-3"><StatusIndicator status={result.status} /></td>
+                <td className="px-4 py-3"><ValidationBadge validation={validation} /></td>
                 <EditableCell result={result} field="prestador" />
                 <EditableCell result={result} field="numeroNota" />
                 <EditableCell result={result} field="dataEmissao" />
