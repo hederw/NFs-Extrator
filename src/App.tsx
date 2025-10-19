@@ -3,7 +3,9 @@ import useLocalStorage from './hooks/useLocalStorage';
 import LayoutModal from './components/LayoutModal';
 import BatchExtractTab from './components/tabs/BatchExtractTab';
 import CreateLayoutTab from './components/tabs/CreateLayoutTab';
-import type { Layout, ExtractionResult } from './types';
+import HistoryTab from './components/tabs/HistoryTab';
+import SavedExtractionsTab from './components/tabs/SavedExtractionsTab';
+import type { Layout, ExtractionResult, ComparisonHistoryItem, SavedExtractionItem, StoredExtractionResult } from './types';
 
 const defaultLayouts: Layout[] = [
     {
@@ -13,7 +15,7 @@ const defaultLayouts: Layout[] = [
     },
 ];
 
-type ActiveTab = 'batch' | 'create';
+type ActiveTab = 'batch' | 'create' | 'history' | 'saved';
 
 function App() {
     const [layouts, setLayouts] = useLocalStorage<Layout[]>('invoice-layouts', defaultLayouts);
@@ -21,6 +23,8 @@ function App() {
     const [isLayoutModalOpen, setIsLayoutModalOpen] = useState(false);
     const [results, setResults] = useState<ExtractionResult[]>([]);
     const [activeTab, setActiveTab] = useState<ActiveTab>('batch');
+    const [history, setHistory] = useLocalStorage<ComparisonHistoryItem[]>('comparison-history', []);
+    const [savedExtractions, setSavedExtractions] = useLocalStorage<SavedExtractionItem[]>('saved-extractions', []);
 
     const handleLayoutSave = (layout: Omit<Layout, 'id'>, makeActive: boolean = false) => {
         const newLayout = { ...layout, id: `layout-${Date.now()}` };
@@ -33,7 +37,7 @@ function App() {
     
     const handleLayoutSelect = (id: string) => {
         setSelectedLayoutId(id);
-        setIsLayoutModalOpen(false);
+        // Não fechar o modal aqui, permite que o usuário veja a seleção
     }
     
     const handleLayoutDelete = (id: string) => {
@@ -58,19 +62,52 @@ function App() {
     }, [results]);
     
     const selectedLayout = layouts.find(l => l.id === selectedLayoutId);
+    
+    const addComparisonToHistory = (comparison: Omit<ComparisonHistoryItem, 'id' | 'timestamp'>) => {
+        const newHistoryItem: ComparisonHistoryItem = {
+            ...comparison,
+            id: `comp-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+        };
+        setHistory(prev => [newHistoryItem, ...prev]);
+        alert("Resultado da comparação salvo no histórico!");
+    }
+
+    const handleSaveExtraction = (name: string) => {
+        if (!name) return;
+
+        const storedResults: StoredExtractionResult[] = results.map(r => ({
+            id: r.id,
+            fileName: r.file.name,
+            status: r.status,
+            data: r.data,
+            error: r.error,
+        }));
+
+        const newSavedExtraction: SavedExtractionItem = {
+            id: `ext-${Date.now()}`,
+            name,
+            timestamp: new Date().toISOString(),
+            results: storedResults,
+            totalLiquidValue: totalLiquidValue,
+        };
+
+        setSavedExtractions(prev => [newSavedExtraction, ...prev]);
+        alert(`Extração "${name}" salva com sucesso!`);
+    };
 
     return (
         <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6 lg:p-8 font-sans">
             <div className="max-w-7xl mx-auto">
                 <header className="mb-8">
                     <h1 className="text-4xl font-bold text-blue-400">Extrator de Notas Fiscais Híbrido</h1>
-                    <p className="text-gray-400 mt-2">Use IA para aprender layouts e processe arquivos em lote com precisão.</p>
+                    <p className="text-gray-400 mt-2">Use IA, processe em lote, valide resultados e consulte o histórico.</p>
                 </header>
 
                 <main>
                     {/* Abas de Navegação */}
                     <div className="mb-6 border-b border-gray-700">
-                        <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+                        <nav className="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
                             <button
                                 onClick={() => setActiveTab('batch')}
                                 className={`${
@@ -79,7 +116,7 @@ function App() {
                                         : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
                                 } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg transition-colors`}
                             >
-                                Extração em Lote
+                                Extração e Comparação
                             </button>
                             <button
                                 onClick={() => setActiveTab('create')}
@@ -89,7 +126,27 @@ function App() {
                                         : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
                                 } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg transition-colors`}
                             >
-                                Criar e Gerenciar Layouts
+                                Criar Layout com IA
+                            </button>
+                             <button
+                                onClick={() => setActiveTab('history')}
+                                className={`${
+                                    activeTab === 'history'
+                                        ? 'border-blue-400 text-blue-300'
+                                        : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg transition-colors`}
+                            >
+                                Histórico de Comparações
+                            </button>
+                             <button
+                                onClick={() => setActiveTab('saved')}
+                                className={`${
+                                    activeTab === 'saved'
+                                        ? 'border-blue-400 text-blue-300'
+                                        : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg transition-colors`}
+                            >
+                                Extrações Salvas
                             </button>
                         </nav>
                     </div>
@@ -99,22 +156,30 @@ function App() {
                         {activeTab === 'batch' && (
                             <BatchExtractTab 
                                 selectedLayout={selectedLayout}
+                                onOpenLayoutModal={() => setIsLayoutModalOpen(true)}
                                 results={results}
                                 setResults={setResults}
                                 totalLiquidValue={totalLiquidValue}
                                 hasSuccessfulResults={hasSuccessfulResults}
+                                onSaveToHistory={addComparisonToHistory}
+                                onSaveExtraction={handleSaveExtraction}
                             />
                         )}
                         {activeTab === 'create' && (
-                           <CreateLayoutTab 
-                                layouts={layouts}
-                                selectedLayout={selectedLayout}
-                                onOpenLayoutModal={() => setIsLayoutModalOpen(true)}
+                           <CreateLayoutTab
                                 onLayoutGenerated={(layout) => {
                                     handleLayoutSave(layout, true);
-                                    // Mudar para a aba de lote para que o usuário possa usar o novo layout imediatamente
                                     setActiveTab('batch'); 
                                 }}
+                           />
+                        )}
+                        {activeTab === 'history' && (
+                           <HistoryTab history={history} />
+                        )}
+                         {activeTab === 'saved' && (
+                           <SavedExtractionsTab 
+                                savedExtractions={savedExtractions}
+                                setSavedExtractions={setSavedExtractions} 
                            />
                         )}
                     </div>

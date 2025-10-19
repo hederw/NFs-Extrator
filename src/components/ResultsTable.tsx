@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import type { ExtractionResult, InvoiceData } from '../types';
+import type { ExtractionResult, InvoiceData, StoredExtractionResult } from '../types';
 import Spinner from './Spinner';
 
 interface ResultsTableProps {
-  results: ExtractionResult[];
-  setResults: React.Dispatch<React.SetStateAction<ExtractionResult[]>>;
+  results: (ExtractionResult | StoredExtractionResult)[];
+  setResults?: React.Dispatch<React.SetStateAction<ExtractionResult[]>>;
 }
 
 const StatusIndicator: React.FC<{ status: ExtractionResult['status'] }> = ({ status }) => {
@@ -22,14 +22,15 @@ const StatusIndicator: React.FC<{ status: ExtractionResult['status'] }> = ({ sta
     }
 };
 
-
 const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults }) => {
   const [pdfUrls, setPdfUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const newUrls: Record<string, string> = {};
     results.forEach(result => {
-        newUrls[result.id] = URL.createObjectURL(result.file);
+        if ('file' in result && result.file instanceof File) {
+             newUrls[result.id] = URL.createObjectURL(result.file);
+        }
     });
     setPdfUrls(newUrls);
 
@@ -40,6 +41,8 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults }) => {
   }, [results]);
   
   const handleUpdate = (id: string, field: keyof InvoiceData, value: string) => {
+    if(!setResults) return;
+
     setResults(currentResults =>
         currentResults.map(r => {
             if (r.id === id && r.data) {
@@ -57,31 +60,31 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults }) => {
     );
   };
 
-
   if (results.length === 0) {
     return (
       <div className="text-center py-10 text-gray-500">
-        <p>Nenhum arquivo processado ainda.</p>
-        <p className="text-sm">Os resultados aparecerão aqui após a extração.</p>
+        <p>Nenhum resultado para exibir.</p>
+        <p className="text-sm">Os resultados aparecerão aqui.</p>
       </div>
     );
   }
   
-  const EditableCell: React.FC<{result: ExtractionResult, field: keyof InvoiceData, type?: 'text' | 'number'}> = ({result, field, type = 'text'}) => {
-    if (result.status !== 'success' || !result.data) {
-        let displayValue: string | number = '-';
-        if (result.data?.[field] != null) {
-            if (field === 'valorLiquido') {
-                displayValue = (result.data[field] as number).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            } else {
-                displayValue = result.data[field] as string;
-            }
-        }
-        const className = field === 'valorLiquido' ? 'text-right' : '';
-        return <td className={`px-4 py-3 ${className}`}>{displayValue}</td>
-    }
+  const EditableCell: React.FC<{result: ExtractionResult | StoredExtractionResult, field: keyof InvoiceData, type?: 'text' | 'number'}> = ({result, field, type = 'text'}) => {
+    const isEditable = !!setResults;
+    const value = result.data?.[field];
 
-    const value = result.data[field];
+    const displayValue = () => {
+        if (value == null) return '-';
+        if (field === 'valorLiquido') {
+            return (value as number).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+        return value as string;
+    }
+    
+    if (!isEditable || result.status !== 'success' || !result.data) {
+        const className = field === 'valorLiquido' ? 'text-right' : '';
+        return <td className={`px-4 py-3 ${className}`}>{displayValue()}</td>
+    }
     
     return (
         <td className="px-2 py-1">
@@ -91,7 +94,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults }) => {
                 value={value}
                 onChange={(e) => handleUpdate(result.id, field, e.target.value)}
                 className={`bg-gray-700/50 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-2 transition-shadow ${type === 'number' ? 'text-right' : ''}`}
-                aria-label={`Editar ${field} para ${result.file.name}`}
+                aria-label={`Editar ${field}`}
             />
         </td>
     )
@@ -111,27 +114,36 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults }) => {
           </tr>
         </thead>
         <tbody>
-          {results.map((result) => (
-            <tr key={result.id} className="border-b border-gray-700 hover:bg-gray-700/50">
-              <td className="px-4 py-3 font-medium text-white whitespace-nowrap truncate max-w-xs">
-                <a
-                  href={pdfUrls[result.id]}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-400 hover:underline text-left w-full truncate"
-                  title={`Visualizar ${result.file.name}`}
-                  aria-label={`Visualizar PDF ${result.file.name}`}
-                >
-                  {result.file.name}
-                </a>
-              </td>
-              <td className="px-4 py-3"><StatusIndicator status={result.status} /></td>
-              <EditableCell result={result} field="prestador" />
-              <EditableCell result={result} field="numeroNota" />
-              <EditableCell result={result} field="dataEmissao" />
-              <EditableCell result={result} field="valorLiquido" type="number" />
-            </tr>
-          ))}
+          {results.map((result) => {
+            const isStored = !('file' in result);
+            const fileName = isStored ? result.fileName : result.file.name;
+
+            return (
+                <tr key={result.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                <td className="px-4 py-3 font-medium text-white whitespace-nowrap truncate max-w-xs">
+                    {isStored ? (
+                        <span title={fileName}>{fileName}</span>
+                    ) : (
+                        <a
+                        href={pdfUrls[result.id]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:underline text-left w-full truncate"
+                        title={`Visualizar ${fileName}`}
+                        aria-label={`Visualizar PDF ${fileName}`}
+                        >
+                        {fileName}
+                        </a>
+                    )}
+                </td>
+                <td className="px-4 py-3"><StatusIndicator status={result.status} /></td>
+                <EditableCell result={result} field="prestador" />
+                <EditableCell result={result} field="numeroNota" />
+                <EditableCell result={result} field="dataEmissao" />
+                <EditableCell result={result} field="valorLiquido" type="number" />
+                </tr>
+            );
+        })}
         </tbody>
       </table>
     </div>

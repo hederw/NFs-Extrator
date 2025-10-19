@@ -3,7 +3,6 @@ import FileUploader from '../FileUploader';
 import Spinner from '../Spinner';
 import { generateLayoutPromptFromImage } from '../../services/geminiService';
 import type { Layout } from '../../types';
-import { CogIcon } from '../icons/CogIcon';
 
 // Declare pdfjsLib from global scope (CDN)
 declare const pdfjsLib: any;
@@ -11,12 +10,9 @@ declare const pdfjsLib: any;
 
 interface CreateLayoutTabProps {
     onLayoutGenerated: (layout: Omit<Layout, 'id'>) => void;
-    layouts: Layout[];
-    selectedLayout: Layout | undefined;
-    onOpenLayoutModal: () => void;
 }
 
-const CreateLayoutTab: React.FC<CreateLayoutTabProps> = ({ onLayoutGenerated, layouts, selectedLayout, onOpenLayoutModal }) => {
+const CreateLayoutTab: React.FC<CreateLayoutTabProps> = ({ onLayoutGenerated }) => {
     const [file, setFile] = useState<File | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -87,34 +83,27 @@ const CreateLayoutTab: React.FC<CreateLayoutTabProps> = ({ onLayoutGenerated, la
         handleClear(); // Limpa o formulário após salvar
     }
     
-    const selectedLayoutName = selectedLayout?.name || "Nenhum layout selecionado";
 
     return (
         <div className="flex flex-col gap-8">
             <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-2xl font-semibold text-blue-300 mb-4">1. Gerenciar Layouts</h2>
-                <div className="flex flex-col sm:flex-row gap-4 items-start">
-                    <p className="text-gray-400 mt-2 flex-grow">
-                        O layout selecionado aqui será usado para a extração em lote. Você pode gerenciar seus layouts salvos ou criar um novo usando IA.
-                    </p>
-                    <button
-                        onClick={onOpenLayoutModal}
-                        className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-3 px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-lg font-semibold transition-colors"
-                    >
-                        <CogIcon />
-                        <span>Layout Ativo: <span className="font-bold text-blue-300">{selectedLayoutName}</span></span>
-                    </button>
-                </div>
-            </section>
-        
-            <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-2xl font-semibold text-blue-300 mb-1">2. Criar Layout com IA: Envie um PDF de Exemplo</h2>
-                <p className="text-gray-400 mb-4 text-sm">A IA irá analisar este arquivo para aprender a estrutura dos dados e gerar um novo layout.</p>
-                <FileUploader onFilesSelected={handleFileSelected} onClear={handleClear} fileCount={file ? 1 : 0} />
+                <h2 className="text-2xl font-semibold text-blue-300 mb-1">1. Envie um PDF de Exemplo</h2>
+                <p className="text-gray-400 mb-4 text-sm">A IA irá analisar este arquivo para aprender a estrutura dos dados e gerar um novo layout para extração.</p>
+                <FileUploader onFilesSelected={handleFileSelected} fileCount={file ? 1 : 0} allowMultiple={false} />
+                 {file && (
+                    <div className="text-center">
+                        <button 
+                            onClick={handleClear} 
+                            className="mt-2 text-xs text-red-400 hover:text-white hover:bg-red-500 font-semibold py-1 px-2 rounded-md transition-colors"
+                        >
+                            Limpar Arquivo
+                        </button>
+                    </div>
+                )}
             </section>
 
             <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-2xl font-semibold text-blue-300 mb-4">3. Gere o Prompt de Extração</h2>
+                <h2 className="text-2xl font-semibold text-blue-300 mb-4">2. Gere o Prompt de Extração</h2>
                  <button
                     onClick={handleGeneratePrompt}
                     disabled={!file || isProcessing}
@@ -127,7 +116,7 @@ const CreateLayoutTab: React.FC<CreateLayoutTabProps> = ({ onLayoutGenerated, la
             
             {generatedPrompt && (
                 <section className="bg-gray-800 p-6 rounded-lg shadow-lg animate-fade-in">
-                    <h2 className="text-2xl font-semibold text-blue-300 mb-4">4. Salve o Novo Layout</h2>
+                    <h2 className="text-2xl font-semibold text-blue-300 mb-4">3. Salve o Novo Layout</h2>
                      <div className="mb-4">
                         <label htmlFor="layoutNameCreate" className="block text-sm font-medium text-gray-300 mb-1">
                         Nome do Layout

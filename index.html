@@ -16,6 +16,15 @@
               'brand-dark': '#1e293b',
               'brand-accent': '#16a34a',
             },
+            animation: {
+                'fade-in': 'fadeIn 0.5s ease-in-out',
+            },
+            keyframes: {
+                fadeIn: {
+                    '0%': { opacity: '0' },
+                    '100%': { opacity: '1' },
+                },
+            },
           },
         },
       }
@@ -49,5 +58,6 @@
 </head>
   <body class="bg-brand-dark text-brand-light">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

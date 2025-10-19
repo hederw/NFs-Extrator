@@ -6,15 +6,20 @@ interface FileUploaderProps {
   onFilesSelected: (files: FileList) => void;
   fileCount: number;
   compact?: boolean;
+  allowMultiple?: boolean;
 }
 
-const FileUploader: React.FC<FileUploaderProps> = ({ onFilesSelected, fileCount, compact = false }) => {
+const FileUploader: React.FC<FileUploaderProps> = ({ onFilesSelected, fileCount, compact = false, allowMultiple = true }) => {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       onFilesSelected(e.target.files);
+       // Reset the input value to allow selecting the same file again after clearing
+      if(inputRef.current) {
+        inputRef.current.value = "";
+      }
     }
   };
 
@@ -51,7 +56,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onFilesSelected, fileCount,
       onClick={triggerFileSelect}
       className={`${baseClasses} ${compact ? compactClasses : fullClasses} ${isDragging ? draggingClasses : normalClasses}`}
     >
-      <input ref={inputRef} id="dropzone-file" type="file" className="hidden" accept=".pdf" multiple onChange={handleFileChange} />
+      <input ref={inputRef} id="dropzone-file" type="file" className="hidden" accept=".pdf" multiple={allowMultiple} onChange={handleFileChange} />
        <UploadIcon compact={compact} />
         <p className={`mb-2 text-sm text-gray-400 ${compact ? 'text-xs' : ''}`}>
             <span className="font-semibold">Clique para enviar</span> ou arraste
