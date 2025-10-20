@@ -6,8 +6,10 @@ import { DownloadIcon } from '../icons/DownloadIcon';
 import { SaveIcon } from '../icons/SaveIcon';
 import { CogIcon } from '../icons/CogIcon';
 import { ChevronDownIcon } from '../icons/ChevronDownIcon';
+import { ExclamationIcon } from '../icons/ExclamationIcon';
 import Spinner from '../Spinner';
 import { extractInvoiceDataFromImage } from '../../services/geminiService';
+import { useDailyCounter } from '../../hooks/useDailyCounter';
 import type { Layout, ExtractionResult, InvoiceData, ValidationResult, GroundTruth } from '../../types';
 
 declare const pdfjsLib: any;
@@ -77,6 +79,8 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     const [progress, setProgress] = useState(0);
     const [validationStatus, setValidationStatus] = useState<Record<string, ValidationResult> | null>(null);
     const [folderName, setFolderName] = useState('');
+    const [limitWarning, setLimitWarning] = useState<string | null>(null);
+    const [dailyCount, incrementDailyCount, DAILY_LIMIT] = useDailyCounter();
 
     const [contasAPagar, setContasAPagar] = useState<GroundTruth>(initialGroundTruth);
     const [razaoLoja, setRazaoLoja] = useState<GroundTruth>(initialGroundTruth);
@@ -114,10 +118,9 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                 let headerIndex = -1;
                 let headers: string[] = [];
                 
-                // Find the first non-empty row to use as header
                 for (let i = 0; i < rows.length; i++) {
                     const potentialHeaders = rows[i].map((cell: any) => cell ? String(cell).trim() : '');
-                    if (potentialHeaders.some(h => h)) { // if the row is not completely empty
+                    if (potentialHeaders.some(h => h)) {
                         headerIndex = i;
                         headers = potentialHeaders;
                         break;
@@ -125,18 +128,18 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                 }
                 
                 if (headerIndex === -1) {
-                    setter({ file, data: [], status: 'error', message: `Erro: Nenhuma linha de cabeçalho encontrada. O arquivo parece estar vazio.`, detectedColumns: [] });
+                    setter({ file, data: [], status: 'error', message: `Erro: Nenhuma linha de cabeçalho encontrada.`, detectedColumns: [] });
                     return;
                 }
     
-                const detectedColumns = headers.filter(h => h); // All non-empty cells in the header row
+                const detectedColumns = headers.filter(h => h);
                 const dataRows = rows.slice(headerIndex + 1);
     
                 const json = dataRows
                     .map(row => {
                         const obj: { [key: string]: any } = {};
                         headers.forEach((header, index) => {
-                            if (header) { // Only map columns with a header
+                            if (header) {
                                  obj[header] = row[index];
                             }
                         });
@@ -145,7 +148,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                     .filter(obj => Object.values(obj).some(val => val !== null && val !== undefined && String(val).trim() !== ''));
                 
                 if (json.length === 0) {
-                     setter({ file, data: [], status: 'error', message: `Aviso: Nenhuma linha de dados encontrada após o cabeçalho.`, detectedColumns });
+                     setter({ file, data: [], status: 'error', message: `Aviso: Nenhuma linha de dados encontrada.`, detectedColumns });
                      return;
                 }
     
@@ -228,14 +231,39 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
             alert('Por favor, selecione uma pasta com arquivos e um layout.');
             return;
         }
+    
         setIsProcessing(true);
         setProgress(0);
         setValidationStatus(null);
-        const initialResults: ExtractionResult[] = files.map(file => ({ id: `${file.name}-${Date.now()}-${Math.random()}`, file, status: 'processing' }));
-        setResults(initialResults);
-
-        for (const result of initialResults) {
+    
+        const remainingLimit = DAILY_LIMIT - dailyCount;
+        if (remainingLimit <= 0) {
+            alert(`Você atingiu o limite diário de ${DAILY_LIMIT} extrações.`);
+            setIsProcessing(false);
+            return;
+        }
+    
+        const filesToProcess = files.slice(0, remainingLimit);
+        const filesSkipped = files.slice(remainingLimit);
+    
+        const resultsToProcess: ExtractionResult[] = filesToProcess.map(file => ({
+            id: `${file.name}-${Date.now()}-${Math.random()}`,
+            file,
+            status: 'processing',
+        }));
+        const resultsSkipped: ExtractionResult[] = filesSkipped.map(file => ({
+            id: `${file.name}-${Date.now()}-${Math.random()}`,
+            file,
+            status: 'error',
+            error: 'Limite diário de extrações excedido.',
+        }));
+    
+        setResults([...resultsToProcess, ...resultsSkipped]);
+    
+        let processedInThisBatch = 0;
+        for (const result of resultsToProcess) {
             try {
+                incrementDailyCount();
                 const base64Image = await convertPdfToImage(result.file);
                 const data = await extractInvoiceDataFromImage(base64Image, selectedLayout.prompt);
                 setResults(current => current.map(r => r.id === result.id ? { ...r, status: 'success', data } : r));
@@ -243,11 +271,12 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                 const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
                 setResults(current => current.map(r => r.id === result.id ? { ...r, status: 'error', error: errorMessage } : r));
             } finally {
-                setProgress(p => p + 1);
+                processedInThisBatch++;
+                setProgress(processedInThisBatch);
             }
         }
         setIsProcessing(false);
-    }, [files, selectedLayout, setResults]);
+    }, [files, selectedLayout, setResults, dailyCount, DAILY_LIMIT, incrementDailyCount]);
 
     const handleClear = () => {
         setFiles([]);
@@ -257,6 +286,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         setContasAPagar(initialGroundTruth);
         setRazaoLoja(initialGroundTruth);
         setFolderName('');
+        setLimitWarning(null);
     };
 
     const handleFolderSelection = (fileList: FileList) => {
@@ -266,6 +296,12 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         const pdfFiles = allFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
         setFiles(pdfFiles);
         
+        const remainingLimit = DAILY_LIMIT - dailyCount;
+        if (pdfFiles.length > remainingLimit) {
+            const canProcessCount = Math.max(0, remainingLimit);
+            setLimitWarning(`A pasta contém ${pdfFiles.length} PDFs, mas seu limite restante é de ${remainingLimit}. Apenas ${canProcessCount > 0 ? `os primeiros ${canProcessCount}` : 'nenhum'} será processado.`);
+        }
+
         const contasFile = allFiles.find(f => f.name.toLowerCase().startsWith('contas a pagar'));
         if(contasFile) {
             parseGroundTruthFile(contasFile, { prestador: 'Razão Social', valor: 'Valor Pagto R$' }, setContasAPagar);
@@ -280,7 +316,14 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
             setRazaoLoja({ ...initialGroundTruth, message: 'Arquivo não encontrado na pasta.' });
         }
     };
-
+    
+    const sanitizeFolderName = (name: string): string => {
+        return name
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-zA-Z0-9_.-]/g, '_')
+            .replace(/__+/g, '_');
+    };
 
     const handleExportExcel = () => {
         const successfulResults = results.filter(r => r.status === 'success' && r.data);
@@ -300,7 +343,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Notas Fiscais');
         
-        const safeFolderName = folderName.trim().replace(/[^a-zA-Z0-9_.-]/g, '_') || 'Lote';
+        const safeFolderName = sanitizeFolderName(folderName.trim()) || 'Lote';
         const fileName = `Extracao_${safeFolderName}.xlsx`;
         XLSX.writeFile(workbook, fileName);
     };
@@ -335,13 +378,20 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     
     const selectedLayoutName = selectedLayout?.name || "Nenhum layout";
     const canValidate = hasSuccessfulResults && (contasAPagar.data.length > 0 || razaoLoja.data.length > 0);
+    const isLimitReached = dailyCount >= DAILY_LIMIT;
 
     return (
         <div className="flex flex-col gap-8">
             <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                     <div className="md:col-span-1 flex flex-col gap-4">
-                        <h2 className="text-2xl font-semibold text-blue-300">1. Configurar</h2>
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-2xl font-semibold text-blue-300">1. Configurar</h2>
+                            <div className="text-right">
+                                <p className="text-xs text-gray-400">Limite Diário</p>
+                                <p className={`font-bold text-lg ${isLimitReached ? 'text-red-400' : 'text-blue-300'}`}>{dailyCount} / {DAILY_LIMIT}</p>
+                            </div>
+                        </div>
                          <div className="flex flex-col gap-2">
                              <label className="text-sm font-semibold text-gray-400">Layout Ativo</label>
                              <button
@@ -356,16 +406,24 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                         </div>
                         <button
                             onClick={handleExtract}
-                            disabled={isProcessing || files.length === 0 || !selectedLayout}
+                            disabled={isProcessing || files.length === 0 || !selectedLayout || isLimitReached}
                             className="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all text-lg flex items-center justify-center gap-2"
                         >
-                            {isProcessing ? <><Spinner /> Processando {progress}/{files.length}...</> : 'Iniciar Extração'}
+                            {isProcessing ? <><Spinner /> Processando {progress}/{files.slice(0, DAILY_LIMIT - (dailyCount - progress)).length}...</> 
+                            : isLimitReached ? 'Limite diário atingido'
+                            : 'Iniciar Extração'}
                         </button>
                     </div>
 
                     <div className="md:col-span-2">
                         <h2 className="text-2xl font-semibold text-blue-300 mb-4">2. Selecionar Pasta</h2>
                         <FolderUploader onFilesSelected={handleFolderSelection} onClear={handleClear} onFolderNameDetected={setFolderName} />
+                         {limitWarning && (
+                            <div className="mt-4 p-3 bg-yellow-900/50 border border-yellow-700 text-yellow-300 text-sm rounded-lg flex items-center gap-2">
+                                <ExclamationIcon />
+                                <span>{limitWarning}</span>
+                            </div>
+                        )}
                          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                             <GroundTruthStatus truth={contasAPagar} name="Contas a Pagar" />
                             <GroundTruthStatus truth={razaoLoja} name="Razao Loja" />
