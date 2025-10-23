@@ -1,9 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import FolderUploader from '../FolderUploader';
 import ResultsTable from '../ResultsTable';
 import { ExcelIcon } from '../icons/ExcelIcon';
 import { DownloadIcon } from '../icons/DownloadIcon';
-import { SaveIcon } from '../icons/SaveIcon';
 import { CogIcon } from '../icons/CogIcon';
 import { ChevronDownIcon } from '../icons/ChevronDownIcon';
 import { ExclamationIcon } from '../icons/ExclamationIcon';
@@ -23,10 +22,18 @@ interface BatchExtractTabProps {
     setResults: React.Dispatch<React.SetStateAction<ExtractionResult[]>>;
     totalLiquidValue: number;
     hasSuccessfulResults: boolean;
-    onSaveExtraction: (name: string) => void;
+    onExtractionComplete: () => void;
+    files: File[];
+    setFiles: React.Dispatch<React.SetStateAction<File[]>>;
+    folderName: string;
+    setFolderName: React.Dispatch<React.SetStateAction<string>>;
+    validationStatus: Record<string, ValidationResult> | null;
+    setValidationStatus: React.Dispatch<React.SetStateAction<Record<string, ValidationResult> | null>>;
+    contasAPagar: GroundTruth;
+    setContasAPagar: React.Dispatch<React.SetStateAction<GroundTruth>>;
+    razaoLoja: GroundTruth;
+    setRazaoLoja: React.Dispatch<React.SetStateAction<GroundTruth>>;
 }
-
-const initialGroundTruth: GroundTruth = { file: null, data: [], status: 'idle', message: 'Aguardando arquivo...' };
 
 const GroundTruthStatus: React.FC<{ truth: GroundTruth, name: string }> = ({ truth, name }) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -72,18 +79,36 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     setResults,
     totalLiquidValue,
     hasSuccessfulResults,
-    onSaveExtraction
+    onExtractionComplete,
+    files,
+    setFiles,
+    folderName,
+    setFolderName,
+    validationStatus,
+    setValidationStatus,
+    contasAPagar,
+    setContasAPagar,
+    razaoLoja,
+    setRazaoLoja
 }) => {
-    const [files, setFiles] = useState<File[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
-    const [validationStatus, setValidationStatus] = useState<Record<string, ValidationResult> | null>(null);
-    const [folderName, setFolderName] = useState('');
     const [limitWarning, setLimitWarning] = useState<string | null>(null);
     const [dailyCount, incrementDailyCount, DAILY_LIMIT] = useDailyCounter();
+    
+    const wasProcessing = useRef(false);
 
-    const [contasAPagar, setContasAPagar] = useState<GroundTruth>(initialGroundTruth);
-    const [razaoLoja, setRazaoLoja] = useState<GroundTruth>(initialGroundTruth);
+    useEffect(() => {
+        if (isProcessing) {
+            wasProcessing.current = true;
+        } else if (wasProcessing.current) {
+            // We just finished processing
+            wasProcessing.current = false;
+            if (hasSuccessfulResults) {
+                onExtractionComplete();
+            }
+        }
+    }, [isProcessing, hasSuccessfulResults, onExtractionComplete]);
 
 
     const convertPdfToImage = async (file: File): Promise<string> => {
@@ -263,9 +288,9 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         let processedInThisBatch = 0;
         for (const result of resultsToProcess) {
             try {
-                incrementDailyCount();
                 const base64Image = await convertPdfToImage(result.file);
                 const data = await extractInvoiceDataFromImage(base64Image, selectedLayout.prompt);
+                incrementDailyCount(); // Apenas incrementa se a extração for bem-sucedida
                 setResults(current => current.map(r => r.id === result.id ? { ...r, status: 'success', data } : r));
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
@@ -279,6 +304,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     }, [files, selectedLayout, setResults, dailyCount, DAILY_LIMIT, incrementDailyCount]);
 
     const handleClear = () => {
+        const initialGroundTruth: GroundTruth = { file: null, data: [], status: 'idle', message: 'Aguardando arquivo...' };
         setFiles([]);
         setResults([]);
         setProgress(0);
@@ -306,14 +332,14 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         if(contasFile) {
             parseGroundTruthFile(contasFile, { prestador: 'Razão Social', valor: 'Valor Pagto R$' }, setContasAPagar);
         } else {
-            setContasAPagar({ ...initialGroundTruth, message: 'Arquivo não encontrado na pasta.' });
+            setContasAPagar({ file: null, data: [], status: 'idle', message: 'Arquivo não encontrado na pasta.' });
         }
 
         const razaoFile = allFiles.find(f => f.name.toLowerCase().startsWith('razao loja'));
         if(razaoFile) {
             parseGroundTruthFile(razaoFile, { prestador: 'Histórico', valor: 'Débito' }, setRazaoLoja);
         } else {
-            setRazaoLoja({ ...initialGroundTruth, message: 'Arquivo não encontrado na pasta.' });
+            setRazaoLoja({ file: null, data: [], status: 'idle', message: 'Arquivo não encontrado na pasta.' });
         }
     };
     
@@ -367,13 +393,6 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(link.href);
-    };
-
-    const handleSave = () => {
-        const name = window.prompt("Digite um nome para salvar esta extração:");
-        if (name) {
-            onSaveExtraction(name);
-        }
     };
     
     const selectedLayoutName = selectedLayout?.name || "Nenhum layout";
@@ -438,7 +457,6 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                     {hasSuccessfulResults && (
                         <div className="flex gap-2 flex-wrap">
                             <button onClick={handleValidateResults} disabled={!canValidate} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-sm font-medium py-2 px-3 rounded-lg transition-colors">Validar com Planilhas</button>
-                             <button onClick={handleSave} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-sm font-medium py-2 px-3 rounded-lg transition-colors"><SaveIcon /> Salvar Extração</button>
                              <button onClick={handleExportExcel} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-sm font-medium py-2 px-3 rounded-lg transition-colors"><ExcelIcon /> Exportar Excel</button>
                              <button onClick={handleDownloadRenamed} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-sm font-medium py-2 px-3 rounded-lg transition-colors"><DownloadIcon /> Baixar PDFs</button>
                         </div>

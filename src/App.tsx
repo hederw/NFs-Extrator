@@ -4,7 +4,7 @@ import LayoutModal from './components/LayoutModal';
 import BatchExtractTab from './components/tabs/BatchExtractTab';
 import CreateLayoutTab from './components/tabs/CreateLayoutTab';
 import SavedExtractionsTab from './components/tabs/SavedExtractionsTab';
-import type { Layout, ExtractionResult, SavedExtractionItem, StoredExtractionResult } from './types';
+import type { Layout, ExtractionResult, SavedExtractionItem, StoredExtractionResult, GroundTruth, ValidationResult } from './types';
 
 const defaultLayouts: Layout[] = [
     {
@@ -16,13 +16,23 @@ const defaultLayouts: Layout[] = [
 
 type ActiveTab = 'batch' | 'create' | 'saved';
 
+const initialGroundTruth: GroundTruth = { file: null, data: [], status: 'idle', message: 'Aguardando arquivo...' };
+
 function App() {
     const [layouts, setLayouts] = useLocalStorage<Layout[]>('invoice-layouts', defaultLayouts);
     const [selectedLayoutId, setSelectedLayoutId] = useState<string>(layouts[0]?.id || '');
     const [isLayoutModalOpen, setIsLayoutModalOpen] = useState(false);
-    const [results, setResults] = useState<ExtractionResult[]>([]);
     const [activeTab, setActiveTab] = useState<ActiveTab>('batch');
     const [savedExtractions, setSavedExtractions] = useLocalStorage<SavedExtractionItem[]>('saved-extractions', []);
+    
+    // State lifted from BatchExtractTab to persist across tab changes
+    const [results, setResults] = useState<ExtractionResult[]>([]);
+    const [files, setFiles] = useState<File[]>([]);
+    const [folderName, setFolderName] = useState('');
+    const [validationStatus, setValidationStatus] = useState<Record<string, ValidationResult> | null>(null);
+    const [contasAPagar, setContasAPagar] = useState<GroundTruth>(initialGroundTruth);
+    const [razaoLoja, setRazaoLoja] = useState<GroundTruth>(initialGroundTruth);
+
 
     const handleLayoutSave = (layout: Omit<Layout, 'id'>, makeActive: boolean = false) => {
         const newLayout = { ...layout, id: `layout-${Date.now()}` };
@@ -61,8 +71,8 @@ function App() {
     
     const selectedLayout = layouts.find(l => l.id === selectedLayoutId);
     
-    const handleSaveExtraction = (name: string) => {
-        if (!name) return;
+    const handleAutoSaveExtraction = (currentFolderName: string) => {
+        if (!hasSuccessfulResults) return;
 
         const storedResults: StoredExtractionResult[] = results.map(r => ({
             id: r.id,
@@ -71,17 +81,20 @@ function App() {
             data: r.data,
             error: r.error,
         }));
+        
+        const extractionName = currentFolderName 
+            ? `Extração da pasta: ${currentFolderName}` 
+            : `Extração de ${new Date().toLocaleString('pt-BR')}`;
 
         const newSavedExtraction: SavedExtractionItem = {
             id: `ext-${Date.now()}`,
-            name,
+            name: extractionName,
             timestamp: new Date().toISOString(),
             results: storedResults,
             totalLiquidValue: totalLiquidValue,
         };
 
-        setSavedExtractions(prev => [newSavedExtraction, ...prev]);
-        alert(`Extração "${name}" salva com sucesso!`);
+        setSavedExtractions(prev => [newSavedExtraction, ...prev].slice(0, 20));
     };
 
     return (
@@ -137,9 +150,19 @@ function App() {
                                 onOpenLayoutModal={() => setIsLayoutModalOpen(true)}
                                 results={results}
                                 setResults={setResults}
+                                files={files}
+                                setFiles={setFiles}
+                                folderName={folderName}
+                                setFolderName={setFolderName}
+                                validationStatus={validationStatus}
+                                setValidationStatus={setValidationStatus}
+                                contasAPagar={contasAPagar}
+                                setContasAPagar={setContasAPagar}
+                                razaoLoja={razaoLoja}
+                                setRazaoLoja={setRazaoLoja}
                                 totalLiquidValue={totalLiquidValue}
                                 hasSuccessfulResults={hasSuccessfulResults}
-                                onSaveExtraction={handleSaveExtraction}
+                                onExtractionComplete={() => handleAutoSaveExtraction(folderName)}
                             />
                         )}
                         {activeTab === 'create' && (
