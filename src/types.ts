@@ -1,3 +1,5 @@
+
+
 export interface Layout {
   id: string;
   name: string;
@@ -11,13 +13,30 @@ export interface InvoiceData {
   valorLiquido: number;
 }
 
+export interface DetailedInvoiceData {
+  numeroNota: string;
+  dataEmissao: string;
+  cnpjPrestador: string;
+  razaoSocialPrestador: string;
+  cnpjTomador: string;
+  razaoSocialTomador: string;
+  localPrestacao: string;
+  localIncidencia: string;
+  codigoServico: string;
+  valorTotalNota: number;
+  aliquotaIssqn: number;
+  inss: number;
+  issRetido: number;
+}
+
 export type ExtractionStatus = 'pending' | 'processing' | 'success' | 'error';
 
 export interface ExtractionResult {
   id: string;
   file: File;
+  pageNumber?: number;
   status: ExtractionStatus;
-  data?: InvoiceData;
+  data?: InvoiceData | DetailedInvoiceData; // Atualizado para suportar ambos os tipos
   error?: string;
 }
 
@@ -25,8 +44,9 @@ export interface ExtractionResult {
 export interface StoredExtractionResult {
   id: string;
   fileName: string;
+  pageNumber?: number;
   status: ExtractionStatus;
-  data?: InvoiceData;
+  data?: InvoiceData; // Mantido como simples para extrações salvas por enquanto
   error?: string;
 }
 

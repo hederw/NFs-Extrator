@@ -95,7 +95,8 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     const [progress, setProgress] = useState(0);
     const [limitWarning, setLimitWarning] = useState<string | null>(null);
     const [dailyCount, incrementDailyCount, DAILY_LIMIT] = useDailyCounter();
-    
+    const [totalTasks, setTotalTasks] = useState(0);
+
     const wasProcessing = useRef(false);
 
     useEffect(() => {
@@ -111,10 +112,13 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
     }, [isProcessing, hasSuccessfulResults, onExtractionComplete]);
 
 
-    const convertPdfToImage = async (file: File): Promise<string> => {
+    const convertPdfToImage = async (file: File, pageNum: number): Promise<string> => {
         const fileBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
-        const page = await pdf.getPage(1);
+        if (pageNum < 1 || pageNum > pdf.numPages) {
+            throw new Error(`A página ${pageNum} não existe. O PDF tem ${pdf.numPages} páginas.`);
+        }
+        const page = await pdf.getPage(pageNum);
         const viewport = page.getViewport({ scale: 1.5 });
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
@@ -213,8 +217,9 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         const successfulResults = results.filter(r => r.status === 'success' && r.data);
 
         for (const result of successfulResults) {
-            const extractedPrestador = result.data!.prestador.toLowerCase().trim();
-            const extractedValor = result.data!.valorLiquido;
+            const data = result.data as InvoiceData;
+            const extractedPrestador = data.prestador.toLowerCase().trim();
+            const extractedValor = data.valorLiquido;
 
             const foundContas = contasAPagar.data.find(gt => {
                 const gtPrestador = gt.prestador.toLowerCase().trim();
@@ -256,41 +261,69 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
             alert('Por favor, selecione uma pasta com arquivos e um layout.');
             return;
         }
-    
+
         setIsProcessing(true);
         setProgress(0);
         setValidationStatus(null);
-    
+        setResults([]); // Limpa resultados anteriores
+
+        const tasks: { file: File; page: number }[] = [];
+        const initialErrorResults: ExtractionResult[] = [];
+
+        for (const file of files) {
+            try {
+                const fileBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    tasks.push({ file, page: i });
+                }
+            } catch (e) {
+                console.error("Erro ao ler PDF:", file.name, e);
+                initialErrorResults.push({
+                    id: `${file.name}-read-error-${Date.now()}`,
+                    file: file,
+                    pageNumber: 1,
+                    status: 'error',
+                    error: 'Falha ao ler o arquivo PDF. Pode estar corrompido.'
+                });
+            }
+        }
+        setResults(initialErrorResults);
+
         const remainingLimit = DAILY_LIMIT - dailyCount;
-        if (remainingLimit <= 0) {
+        if (tasks.length > 0 && remainingLimit <= 0) {
             alert(`Você atingiu o limite diário de ${DAILY_LIMIT} extrações.`);
             setIsProcessing(false);
             return;
         }
-    
-        const filesToProcess = files.slice(0, remainingLimit);
-        const filesSkipped = files.slice(remainingLimit);
-    
-        const resultsToProcess: ExtractionResult[] = filesToProcess.map(file => ({
-            id: `${file.name}-${Date.now()}-${Math.random()}`,
+
+        const tasksToProcess = tasks.slice(0, remainingLimit);
+        const tasksSkipped = tasks.slice(remainingLimit);
+        setTotalTasks(tasksToProcess.length);
+
+        const resultsToProcess: ExtractionResult[] = tasksToProcess.map(({ file, page }) => ({
+            id: `${file.name}-p${page}-${Date.now()}-${Math.random()}`,
             file,
+            pageNumber: page,
             status: 'processing',
         }));
-        const resultsSkipped: ExtractionResult[] = filesSkipped.map(file => ({
-            id: `${file.name}-${Date.now()}-${Math.random()}`,
+
+        const resultsSkipped: ExtractionResult[] = tasksSkipped.map(({ file, page }) => ({
+            id: `${file.name}-p${page}-${Date.now()}-${Math.random()}`,
             file,
+            pageNumber: page,
             status: 'error',
             error: 'Limite diário de extrações excedido.',
         }));
-    
-        setResults([...resultsToProcess, ...resultsSkipped]);
-    
+        
+        setResults(current => [...current, ...resultsToProcess, ...resultsSkipped]);
+        
         let processedInThisBatch = 0;
         for (const result of resultsToProcess) {
             try {
-                const base64Image = await convertPdfToImage(result.file);
+                const base64Image = await convertPdfToImage(result.file, result.pageNumber!);
                 const data = await extractInvoiceDataFromImage(base64Image, selectedLayout.prompt);
-                incrementDailyCount(); // Apenas incrementa se a extração for bem-sucedida
+                incrementDailyCount();
                 setResults(current => current.map(r => r.id === result.id ? { ...r, status: 'success', data } : r));
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
@@ -303,6 +336,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         setIsProcessing(false);
     }, [files, selectedLayout, setResults, dailyCount, DAILY_LIMIT, incrementDailyCount]);
 
+
     const handleClear = () => {
         const initialGroundTruth: GroundTruth = { file: null, data: [], status: 'idle', message: 'Aguardando arquivo...' };
         setFiles([]);
@@ -313,6 +347,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         setRazaoLoja(initialGroundTruth);
         setFolderName('');
         setLimitWarning(null);
+        setTotalTasks(0);
     };
 
     const handleFolderSelection = (fileList: FileList) => {
@@ -321,12 +356,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
         
         const pdfFiles = allFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
         setFiles(pdfFiles);
-        
-        const remainingLimit = DAILY_LIMIT - dailyCount;
-        if (pdfFiles.length > remainingLimit) {
-            const canProcessCount = Math.max(0, remainingLimit);
-            setLimitWarning(`A pasta contém ${pdfFiles.length} PDFs, mas seu limite restante é de ${remainingLimit}. Apenas ${canProcessCount > 0 ? `os primeiros ${canProcessCount}` : 'nenhum'} será processado.`);
-        }
+        setLimitWarning(null);
 
         const contasFile = allFiles.find(f => f.name.toLowerCase().startsWith('contas a pagar'));
         if(contasFile) {
@@ -357,14 +387,17 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
             alert('Não há dados para exportar.');
             return;
         }
-        const worksheetData = successfulResults.map(r => ({
-            'Nome do Arquivo': r.file.name,
-            'Prestador': r.data!.prestador,
-            'Número da Nota': r.data!.numeroNota,
-            'Data de Emissão': r.data!.dataEmissao,
-            'Valor Líquido': r.data!.valorLiquido,
-            'Status Validação': validationStatus?.[r.id]?.status || 'N/A',
-        }));
+        const worksheetData = successfulResults.map(r => {
+            const data = r.data as InvoiceData;
+            return {
+                'Nome do Arquivo': `${r.file.name}${r.pageNumber ? ` (pág. ${r.pageNumber})` : ''}`,
+                'Prestador': data.prestador,
+                'Número da Nota': data.numeroNota,
+                'Data de Emissão': data.dataEmissao,
+                'Valor Líquido': data.valorLiquido,
+                'Status Validação': validationStatus?.[r.id]?.status || 'N/A',
+            };
+        });
         const worksheet = XLSX.utils.json_to_sheet(worksheetData);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Notas Fiscais');
@@ -381,10 +414,30 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
             return;
         }
         const zip = new JSZip();
+
+        // Group results by original file to avoid duplicates in the zip
+        const resultsByFile = new Map<string, { file: File, results: ExtractionResult[] }>();
         for (const result of successfulResults) {
-            const newFileName = `NF ${result.data!.numeroNota} OK.pdf`;
-            zip.file(newFileName, result.file);
+            if (!resultsByFile.has(result.file.name)) {
+                resultsByFile.set(result.file.name, { file: result.file, results: [] });
+            }
+            resultsByFile.get(result.file.name)!.results.push(result);
         }
+
+        // Process each original file once
+        for (const { file, results: fileResults } of resultsByFile.values()) {
+            // Sort results by page number to have a consistent file name
+            fileResults.sort((a, b) => (a.pageNumber || 0) - (b.pageNumber || 0));
+
+            const invoiceNumbers = fileResults.map(r => (r.data as InvoiceData).numeroNota).join('_');
+
+            // Sanitize invoice numbers part for file name
+            const safeInvoiceNumbers = invoiceNumbers.replace(/[^a-zA-Z0-9_-]/g, '');
+
+            const newFileName = `NF_${safeInvoiceNumbers}_OK.pdf`;
+            zip.file(newFileName, file);
+        }
+
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(zipBlob);
@@ -428,7 +481,7 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                             disabled={isProcessing || files.length === 0 || !selectedLayout || isLimitReached}
                             className="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all text-lg flex items-center justify-center gap-2"
                         >
-                            {isProcessing ? <><Spinner /> Processando {progress}/{files.slice(0, DAILY_LIMIT - (dailyCount - progress)).length}...</> 
+                            {isProcessing ? <><Spinner /> Processando {progress}/{totalTasks}...</> 
                             : isLimitReached ? 'Limite diário atingido'
                             : 'Iniciar Extração'}
                         </button>

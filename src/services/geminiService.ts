@@ -1,5 +1,7 @@
+
+
 import { GoogleGenAI, Type } from "@google/genai";
-import type { InvoiceData } from '../types';
+import type { InvoiceData, DetailedInvoiceData } from '../types';
 
 const API_KEY = process.env.API_KEY;
 
@@ -18,6 +20,31 @@ const responseSchema = {
         valorLiquido: { type: Type.NUMBER, description: 'O valor líquido da nota, como um número.' },
     },
     required: ['prestador', 'numeroNota', 'dataEmissao', 'valorLiquido'],
+};
+
+const detailedResponseSchema = {
+    type: Type.OBJECT,
+    properties: {
+        numeroNota: { type: Type.STRING, description: 'O número da nota fiscal.' },
+        dataEmissao: { type: Type.STRING, description: 'A data de emissão.' },
+        cnpjPrestador: { type: Type.STRING, description: 'CNPJ do prestador de serviço (apenas números ou formatado).' },
+        razaoSocialPrestador: { type: Type.STRING, description: 'Razão Social do prestador.' },
+        cnpjTomador: { type: Type.STRING, description: 'CNPJ do tomador de serviço.' },
+        razaoSocialTomador: { type: Type.STRING, description: 'Razão Social do tomador.' },
+        localPrestacao: { type: Type.STRING, description: 'Local onde o serviço foi prestado (Cidade/UF).' },
+        localIncidencia: { type: Type.STRING, description: 'Local de incidência do ISSQN.' },
+        codigoServico: { type: Type.STRING, description: 'Código do serviço prestado.' },
+        valorTotalNota: { type: Type.NUMBER, description: 'Valor total bruto da nota.' },
+        aliquotaIssqn: { type: Type.NUMBER, description: 'Alíquota do ISSQN em porcentagem (ex: 5.0).' },
+        inss: { type: Type.NUMBER, description: 'Valor do INSS retido ou calculado.' },
+        issRetido: { type: Type.NUMBER, description: 'Valor do ISS retido.' },
+    },
+    required: [
+        'numeroNota', 'dataEmissao',
+        'cnpjPrestador', 'razaoSocialPrestador', 'cnpjTomador', 'razaoSocialTomador',
+        'localPrestacao', 'localIncidencia', 'codigoServico', 'valorTotalNota',
+        'aliquotaIssqn', 'inss', 'issRetido'
+    ],
 };
 
 
@@ -76,6 +103,54 @@ export const extractInvoiceDataFromImage = async (base64Image: string, userPromp
         }
 
         return parsedData;
+
+    } catch (error) {
+       throw new Error(handleApiError(error));
+    }
+};
+
+export const extractDetailedInvoiceData = async (base64Image: string): Promise<DetailedInvoiceData> => {
+    const imagePart = {
+        inlineData: {
+            mimeType: 'image/png',
+            data: base64Image,
+        },
+    };
+
+    const textPart = {
+        text: `Analise a nota fiscal e extraia EXATAMENTE os seguintes campos:
+        1. Número da Nota
+        2. Data de Emissão
+        3. CNPJ do Prestador
+        4. Razão Social do Prestador
+        5. CNPJ do Tomador
+        6. Razão Social do Tomador
+        7. Local de Prestação de Serviço
+        8. Local de Incidência do ISSQN
+        9. Código do Serviço
+        10. Valor Total da Nota
+        11. Alíquota ISSQN
+        12. INSS
+        13. ISS Retido
+        
+        Se algum valor monetário ou percentual não estiver explícito, use 0. Se texto não for encontrado, use string vazia.`
+    };
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [imagePart, textPart] },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: detailedResponseSchema,
+            }
+        });
+
+        const jsonText = response.text;
+        if (!jsonText) {
+            throw new Error("A IA retornou uma resposta de texto vazia ou inválida.");
+        }
+        return JSON.parse(jsonText.trim()) as DetailedInvoiceData;
 
     } catch (error) {
        throw new Error(handleApiError(error));

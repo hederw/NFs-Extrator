@@ -156,23 +156,24 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults, valida
           {results.map((result) => {
             const isStored = !('file' in result);
             const fileName = isStored ? result.fileName : result.file.name;
+            const displayName = result.pageNumber ? `${fileName} (pág. ${result.pageNumber})` : fileName;
             const validation = validationStatus?.[result.id];
 
             return (
                 <tr key={result.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                 <td className="px-4 py-3 font-medium text-white whitespace-nowrap truncate max-w-xs">
                     {isStored ? (
-                        <span title={fileName}>{fileName}</span>
+                        <span title={displayName}>{displayName}</span>
                     ) : (
                         <a
                         href={pdfUrls[result.id]}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-400 hover:underline text-left w-full truncate"
-                        title={`Visualizar ${fileName}`}
-                        aria-label={`Visualizar PDF ${fileName}`}
+                        title={`Visualizar ${displayName}`}
+                        aria-label={`Visualizar PDF ${displayName}`}
                         >
-                        {fileName}
+                        {displayName}
                         </a>
                     )}
                 </td>

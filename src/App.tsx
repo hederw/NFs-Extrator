@@ -1,9 +1,11 @@
+
 import { useState, useMemo } from 'react';
 import useLocalStorage from './hooks/useLocalStorage';
 import LayoutModal from './components/LayoutModal';
 import BatchExtractTab from './components/tabs/BatchExtractTab';
 import CreateLayoutTab from './components/tabs/CreateLayoutTab';
 import SavedExtractionsTab from './components/tabs/SavedExtractionsTab';
+import DetailedExtractTab from './components/tabs/DetailedExtractTab';
 import type { Layout, ExtractionResult, SavedExtractionItem, StoredExtractionResult, GroundTruth, ValidationResult } from './types';
 
 const defaultLayouts: Layout[] = [
@@ -14,7 +16,7 @@ const defaultLayouts: Layout[] = [
     },
 ];
 
-type ActiveTab = 'batch' | 'create' | 'saved';
+type ActiveTab = 'batch' | 'detailed' | 'create' | 'saved';
 
 const initialGroundTruth: GroundTruth = { file: null, data: [], status: 'idle', message: 'Aguardando arquivo...' };
 
@@ -65,8 +67,8 @@ function App() {
 
     const totalLiquidValue = useMemo(() => {
         return results
-            .filter(r => r.status === 'success' && r.data?.valorLiquido)
-            .reduce((sum, r) => sum + r.data!.valorLiquido, 0);
+            .filter(r => r.status === 'success' && r.data && 'valorLiquido' in r.data)
+            .reduce((sum, r) => sum + (r.data as any).valorLiquido, 0);
     }, [results]);
     
     const selectedLayout = layouts.find(l => l.id === selectedLayoutId);
@@ -77,8 +79,9 @@ function App() {
         const storedResults: StoredExtractionResult[] = results.map(r => ({
             id: r.id,
             fileName: r.file.name,
+            pageNumber: r.pageNumber,
             status: r.status,
-            data: r.data,
+            data: r.data as any, // Cast for simplicity here, assuming simple invoice data for batch tab
             error: r.error,
         }));
         
@@ -118,6 +121,16 @@ function App() {
                                 } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg transition-colors`}
                             >
                                 Extração e Validação
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('detailed')}
+                                className={`${
+                                    activeTab === 'detailed'
+                                        ? 'border-blue-400 text-blue-300'
+                                        : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg transition-colors`}
+                            >
+                                Extração Detalhada
                             </button>
                             <button
                                 onClick={() => setActiveTab('create')}
@@ -164,6 +177,9 @@ function App() {
                                 hasSuccessfulResults={hasSuccessfulResults}
                                 onExtractionComplete={() => handleAutoSaveExtraction(folderName)}
                             />
+                        )}
+                        {activeTab === 'detailed' && (
+                           <DetailedExtractTab />
                         )}
                         {activeTab === 'create' && (
                            <CreateLayoutTab
