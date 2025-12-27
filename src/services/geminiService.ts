@@ -1,5 +1,3 @@
-
-
 import { GoogleGenAI, Type } from "@google/genai";
 import type { InvoiceData, DetailedInvoiceData } from '../types';
 
@@ -14,10 +12,10 @@ const ai = new GoogleGenAI({ apiKey: API_KEY });
 const responseSchema = {
     type: Type.OBJECT,
     properties: {
-        prestador: { type: Type.STRING, description: 'Nome completo ou razão social do prestador de serviço.' },
-        numeroNota: { type: Type.STRING, description: 'O número da nota fiscal.' },
-        dataEmissao: { type: Type.STRING, description: 'A data de emissão no formato AAAA-MM-DD.' },
-        valorLiquido: { type: Type.NUMBER, description: 'O valor líquido da nota, como um número.' },
+        prestador: { type: Type.STRING, description: 'Nome completo ou razão social do prestador de serviço. Se não encontrado, retorne uma string vazia.' },
+        numeroNota: { type: Type.STRING, description: 'O número da nota fiscal. Se não encontrado, retorne uma string vazia.' },
+        dataEmissao: { type: Type.STRING, description: 'A data de emissão no formato AAAA-MM-DD. Se não encontrado, retorne uma string vazia.' },
+        valorLiquido: { type: Type.NUMBER, description: 'O valor líquido da nota, como um número. Se não encontrado, retorne 0.' },
     },
     required: ['prestador', 'numeroNota', 'dataEmissao', 'valorLiquido'],
 };
@@ -79,7 +77,7 @@ export const extractInvoiceDataFromImage = async (base64Image: string, userPromp
     };
 
     const textPart = {
-        text: `Com base na imagem da nota fiscal, extraia as seguintes informações. Instruções adicionais: ${userPrompt}`
+        text: `Com base na imagem da nota fiscal, extraia as seguintes informações em JSON. Se um campo não for encontrado, deixe-o como uma string vazia ("") ou 0 para valores numéricos. Instruções adicionais de layout: ${userPrompt}`
     };
 
     try {
@@ -96,10 +94,15 @@ export const extractInvoiceDataFromImage = async (base64Image: string, userPromp
         if (!jsonText) {
             throw new Error("A IA retornou uma resposta de texto vazia ou inválida.");
         }
+        
         const parsedData = JSON.parse(jsonText.trim()) as InvoiceData;
 
-        if (!parsedData.prestador || !parsedData.numeroNota || !parsedData.dataEmissao || parsedData.valorLiquido == null) {
-            throw new Error("Resposta da IA está incompleta ou mal formatada.");
+        // Verifica apenas se as chaves existem, permitindo strings vazias para evitar erros fatais
+        const keys = ['prestador', 'numeroNota', 'dataEmissao', 'valorLiquido'];
+        const hasAllKeys = keys.every(key => key in parsedData);
+
+        if (!hasAllKeys) {
+            throw new Error("Resposta da IA está incompleta ou mal formatada (chaves faltando).");
         }
 
         return parsedData;
@@ -118,7 +121,7 @@ export const extractDetailedInvoiceData = async (base64Image: string): Promise<D
     };
 
     const textPart = {
-        text: `Analise a nota fiscal e extraia EXATAMENTE os seguintes campos:
+        text: `Analise a nota fiscal e extraia EXATAMENTE os seguintes campos em formato JSON:
         1. Número da Nota
         2. Data de Emissão
         3. CNPJ do Prestador
@@ -133,7 +136,7 @@ export const extractDetailedInvoiceData = async (base64Image: string): Promise<D
         12. INSS
         13. ISS Retido
         
-        Se algum valor monetário ou percentual não estiver explícito, use 0. Se texto não for encontrado, use string vazia.`
+        IMPORTANTE: Se algum valor monetário ou percentual não estiver explícito na imagem, use 0. Se algum campo de texto não for encontrado, use uma string vazia ("").`
     };
 
     try {

@@ -277,14 +277,21 @@ const BatchExtractTab: React.FC<BatchExtractTabProps> = ({
                 for (let i = 1; i <= pdf.numPages; i++) {
                     tasks.push({ file, page: i });
                 }
-            } catch (e) {
+            } catch (e: any) {
                 console.error("Erro ao ler PDF:", file.name, e);
+                let errorMessage = 'Falha ao ler o arquivo PDF. Pode estar corrompido.';
+                
+                // Tratamento específico para erro de senha (PDF criptografado)
+                if (e.name === 'PasswordException' || e.message?.includes('password') || e.message?.includes('No password given')) {
+                    errorMessage = 'Arquivo protegido por senha.';
+                }
+
                 initialErrorResults.push({
                     id: `${file.name}-read-error-${Date.now()}`,
                     file: file,
                     pageNumber: 1,
                     status: 'error',
-                    error: 'Falha ao ler o arquivo PDF. Pode estar corrompido.'
+                    error: errorMessage
                 });
             }
         }
