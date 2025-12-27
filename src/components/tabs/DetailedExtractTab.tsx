@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import FolderUploader from '../FolderUploader';
 import DetailedResultsTable from '../DetailedResultsTable';
@@ -33,7 +32,10 @@ const DetailedExtractTab: React.FC = () => {
         });
 
         const explicit = filename.match(/senha[^\s_-]*/i);
-        if (explicit) passwords.push(explicit[0].replace(/senha/i, ''));
+        if (explicit) {
+            const match = explicit[0].replace(/senha/i, '');
+            if (match) passwords.push(match);
+        }
 
         return Array.from(new Set(passwords));
     };
@@ -85,7 +87,6 @@ const DetailedExtractTab: React.FC = () => {
         setResults([]);
 
         const tasks: { file: File; page: number }[] = [];
-        const initialResults: ExtractionResult[] = [];
 
         for (const file of files) {
             tasks.push({ file, page: 1 });
@@ -131,7 +132,6 @@ const DetailedExtractTab: React.FC = () => {
                 incrementDailyCount();
                 setResults(current => current.map(r => r.id === result.id ? { ...r, status: 'success', data } : r));
             } catch (error: any) {
-                // FIX: Cast error to any to access 'name' property safely in the catch block to resolve "Property 'name' does not exist on type 'unknown'" error.
                 const err = error as any;
                 let errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
                 if (err.name === 'PasswordException' || errorMessage.includes('password') || errorMessage.includes('No password given')) {
