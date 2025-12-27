@@ -1,13 +1,9 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import type { InvoiceData, DetailedInvoiceData } from '../types';
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+// FIX: Always use process.env.API_KEY directly in initialization
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const responseSchema = {
     type: Type.OBJECT,
@@ -82,7 +78,8 @@ export const extractInvoiceDataFromImage = async (base64Image: string, userPromp
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            // FIX: Using gemini-3-flash-preview for invoice extraction
+            model: 'gemini-3-flash-preview',
             contents: { parts: [imagePart, textPart] },
             config: {
                 responseMimeType: 'application/json',
@@ -121,27 +118,13 @@ export const extractDetailedInvoiceData = async (base64Image: string): Promise<D
     };
 
     const textPart = {
-        text: `Analise a nota fiscal e extraia EXATAMENTE os seguintes campos em formato JSON:
-        1. Número da Nota
-        2. Data de Emissão
-        3. CNPJ do Prestador
-        4. Razão Social do Prestador
-        5. CNPJ do Tomador
-        6. Razão Social do Tomador
-        7. Local de Prestação de Serviço
-        8. Local de Incidência do ISSQN
-        9. Código do Serviço
-        10. Valor Total da Nota
-        11. Alíquota ISSQN
-        12. INSS
-        13. ISS Retido
-        
-        IMPORTANTE: Se algum valor monetário ou percentual não estiver explícito na imagem, use 0. Se algum campo de texto não for encontrado, use uma string vazia ("").`
+        text: `Analise a nota fiscal e extraia EXATAMENTE os seguintes campos em formato JSON.`
     };
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            // FIX: Using gemini-3-flash-preview for extraction
+            model: 'gemini-3-flash-preview',
             contents: { parts: [imagePart, textPart] },
             config: {
                 responseMimeType: 'application/json',
@@ -178,16 +161,14 @@ export const generateLayoutPromptFromImage = async (base64Image: string): Promis
 
       Para cada campo, descreva sua localização precisa e quaisquer rótulos ou textos próximos que ajudem a identificá-lo.
       Seja conciso e direto.
-
-      Exemplo de saída:
-      "O nome do prestador está no campo 'NOME/RAZÃO SOCIAL'. O número da nota fiscal está no canto superior direito, rotulado como 'NFS-e'. O valor líquido é 'VALOR LÍQUIDO DA NOTA FISCAL'. A data de emissão está rotulada como 'Data de Emissão'."
     `;
 
     const textPart = { text: metaPrompt };
 
      try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash', // Usar um modelo robusto para esta tarefa
+            // FIX: Using gemini-3-flash-preview
+            model: 'gemini-3-flash-preview',
             contents: { parts: [imagePart, textPart] },
         });
 

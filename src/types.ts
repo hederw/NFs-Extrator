@@ -1,5 +1,4 @@
 
-
 export interface Layout {
   id: string;
   name: string;
@@ -11,6 +10,8 @@ export interface InvoiceData {
   numeroNota: string;
   dataEmissao: string;
   valorLiquido: number;
+  // FIX: Added index signature to allow dynamic property access (e.g., in ResultsTable)
+  [key: string]: any;
 }
 
 export interface DetailedInvoiceData {
