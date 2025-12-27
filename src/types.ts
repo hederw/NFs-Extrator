@@ -10,7 +10,6 @@ export interface InvoiceData {
   numeroNota: string;
   dataEmissao: string;
   valorLiquido: number;
-  // FIX: Added index signature to allow dynamic property access (e.g., in ResultsTable)
   [key: string]: any;
 }
 
@@ -37,17 +36,16 @@ export interface ExtractionResult {
   file: File;
   pageNumber?: number;
   status: ExtractionStatus;
-  data?: InvoiceData | DetailedInvoiceData; // Atualizado para suportar ambos os tipos
+  data?: InvoiceData | DetailedInvoiceData;
   error?: string;
 }
 
-// Uma versão do ExtractionResult que pode ser armazenada com segurança no localStorage (sem o objeto File)
 export interface StoredExtractionResult {
   id: string;
   fileName: string;
   pageNumber?: number;
   status: ExtractionStatus;
-  data?: InvoiceData; // Mantido como simples para extrações salvas por enquanto
+  data?: InvoiceData;
   error?: string;
 }
 
@@ -72,40 +70,42 @@ export interface GroundTruth {
   data: InvoiceData[];
   status: 'idle' | 'success' | 'error';
   message: string;
-  detectedColumns?: string[]; // Adicionado para feedback ao usuário
+  detectedColumns?: string[];
 }
 
-// FIX: Add missing types for comparison results and history.
-export type FieldComparisonStatus = 'match' | 'mismatch' | 'missing';
-
-export interface FieldComparison {
-    status: FieldComparisonStatus;
-    extracted: string | number | null;
-    groundTruth: string | number | null;
+// FIX: Added ComparisonField, ComparisonResultItem and ComparisonHistoryItem to resolve import errors in HistoryTab and ComparisonResults
+export interface ComparisonField {
+  status: 'match' | 'mismatch' | 'missing';
+  extracted: any;
+  groundTruth: any;
 }
-
-export type OverallComparisonStatus = 'perfect_match' | 'partial_mismatch' | 'not_found_in_truth';
 
 export interface ComparisonResultItem {
-    numeroNota: string;
-    comparisonStatus: OverallComparisonStatus;
-    fields: {
-        prestador: FieldComparison;
-        dataEmissao: FieldComparison;
-        valorLiquido: FieldComparison;
-    };
-}
-
-export interface ComparisonSummary {
-    total: number;
-    matches: number;
-    mismatches: number;
-    notFound: number;
+  numeroNota: string;
+  comparisonStatus: 'perfect_match' | 'partial_mismatch' | 'not_found_in_truth';
+  fields: {
+    prestador: ComparisonField;
+    dataEmissao: ComparisonField;
+    valorLiquido: ComparisonField;
+  };
 }
 
 export interface ComparisonHistoryItem {
-    id: string;
-    timestamp: string;
-    results: ComparisonResultItem[];
-    summary: ComparisonSummary;
+  id: string;
+  timestamp: string;
+  summary: {
+    matches: number;
+    mismatches: number;
+    total: number;
+  };
+  results: ComparisonResultItem[];
+}
+
+// Resolução do erro TS2580 no Netlify
+declare global {
+  namespace NodeJS {
+    interface ProcessEnv {
+      API_KEY: string;
+    }
+  }
 }

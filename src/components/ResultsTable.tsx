@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { ExtractionResult, InvoiceData, StoredExtractionResult, ValidationResult } from '../types';
 import Spinner from './Spinner';
@@ -25,10 +26,8 @@ const StatusIndicator: React.FC<{ status: ExtractionResult['status'] }> = ({ sta
 
 const ValidationBadge: React.FC<{ validation?: ValidationResult }> = ({ validation }) => {
     if (!validation) return <span className="text-gray-500">-</span>;
-
     const { status, source, expectedValue } = validation;
     let bgColor, textColor, text, title;
-
     switch (status) {
         case 'OK':
             bgColor = 'bg-green-800/50';
@@ -40,21 +39,16 @@ const ValidationBadge: React.FC<{ validation?: ValidationResult }> = ({ validati
             bgColor = 'bg-orange-800/50';
             textColor = 'text-orange-300';
             text = '⚠ Divergente';
-            title = `Encontrado em: ${source}, Valor esperado: ${expectedValue?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+            title = `Esperado: ${expectedValue?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
             break;
         case 'Não Encontrado':
             bgColor = 'bg-red-800/50';
             textColor = 'text-red-300';
             text = '✗ Não Encontrado';
-            title = 'Não encontrado em nenhum gabarito';
             break;
     }
-
     return (
-        <span
-            className={`px-2 py-1 text-xs font-medium rounded-full ${bgColor} ${textColor}`}
-            title={title}
-        >
+        <span className={`px-2 py-1 text-xs font-medium rounded-full ${bgColor} ${textColor}`} title={title}>
             {text}
         </span>
     );
@@ -71,26 +65,18 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults, valida
         }
     });
     setPdfUrls(newUrls);
-
-    // Cleanup function to revoke URLs and prevent memory leaks
-    return () => {
-        Object.values(newUrls).forEach(url => URL.revokeObjectURL(url));
-    };
+    return () => Object.values(newUrls).forEach(url => URL.revokeObjectURL(url));
   }, [results]);
   
   const handleUpdate = (id: string, field: keyof InvoiceData, value: string) => {
     if(!setResults) return;
-
     setResults(currentResults =>
         currentResults.map(r => {
             if (r.id === id && r.data) {
                 const newValue = field === 'valorLiquido' ? parseFloat(value) || 0 : value;
                 return {
                     ...r,
-                    data: {
-                        ...r.data,
-                        [field]: newValue,
-                    },
+                    data: { ...r.data, [field]: newValue } as any,
                 };
             }
             return r;
@@ -102,17 +88,18 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults, valida
     return (
       <div className="text-center py-10 text-gray-500">
         <p>Nenhum resultado para exibir.</p>
-        <p className="text-sm">Os resultados aparecerão aqui.</p>
       </div>
     );
   }
   
   const EditableCell: React.FC<{result: ExtractionResult | StoredExtractionResult, field: keyof InvoiceData, type?: 'text' | 'number'}> = ({result, field, type = 'text'}) => {
     const isEditable = !!setResults;
-    const value = result.data?.[field];
+    // Fix TS7053: Cast explicitamente para InvoiceData para acessar propriedades dinâmicas
+    const data = result.data as InvoiceData | undefined;
+    const value = data ? data[field] : undefined;
 
     const displayValue = () => {
-        if (value == null) return '-';
+        if (value == null || value === "") return '-';
         if (field === 'valorLiquido') {
             return (value as number).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         }
@@ -129,10 +116,9 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults, valida
              <input
                 type={type}
                 step={type === 'number' ? '0.01' : undefined}
-                value={value}
+                value={value ?? ''}
                 onChange={(e) => handleUpdate(result.id, field, e.target.value)}
                 className={`bg-gray-700/50 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-2 transition-shadow ${type === 'number' ? 'text-right' : ''}`}
-                aria-label={`Editar ${field}`}
             />
         </td>
     )
@@ -155,7 +141,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults, valida
         <tbody>
           {results.map((result) => {
             const isStored = !('file' in result);
-            const fileName = isStored ? result.fileName : result.file.name;
+            const fileName = isStored ? (result as StoredExtractionResult).fileName : (result as ExtractionResult).file.name;
             const displayName = result.pageNumber ? `${fileName} (pág. ${result.pageNumber})` : fileName;
             const validation = validationStatus?.[result.id];
 
@@ -163,17 +149,10 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults, valida
                 <tr key={result.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                 <td className="px-4 py-3 font-medium text-white whitespace-nowrap truncate max-w-xs">
                     {isStored ? (
-                        <span title={displayName}>{displayName}</span>
+                        <span>{displayName}</span>
                     ) : (
-                        <a
-                        href={pdfUrls[result.id]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-400 hover:underline text-left w-full truncate"
-                        title={`Visualizar ${displayName}`}
-                        aria-label={`Visualizar PDF ${displayName}`}
-                        >
-                        {displayName}
+                        <a href={pdfUrls[result.id]} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                            {displayName}
                         </a>
                     )}
                 </td>

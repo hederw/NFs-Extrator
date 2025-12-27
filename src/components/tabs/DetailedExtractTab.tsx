@@ -1,5 +1,4 @@
 
-
 import React, { useState, useCallback } from 'react';
 import FolderUploader from '../FolderUploader';
 import DetailedResultsTable from '../DetailedResultsTable';
@@ -23,9 +22,47 @@ const DetailedExtractTab: React.FC = () => {
     const [limitWarning, setLimitWarning] = useState<string | null>(null);
     const [dailyCount, incrementDailyCount, DAILY_LIMIT] = useDailyCounter();
 
+    const extractPossiblePasswords = (filename: string): string[] => {
+        const passwords: string[] = [];
+        const digits = filename.match(/\d{4,}/g);
+        if (digits) passwords.push(...digits);
+        
+        const parts = filename.split(/[\s_-]+/);
+        parts.forEach(p => {
+            if (p.length >= 4) passwords.push(p.replace(/\.pdf$/i, ''));
+        });
+
+        const explicit = filename.match(/senha[^\s_-]*/i);
+        if (explicit) passwords.push(explicit[0].replace(/senha/i, ''));
+
+        return Array.from(new Set(passwords));
+    };
+
     const convertPdfToImage = async (file: File, pageNum: number): Promise<string> => {
         const fileBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
+        let pdf;
+        
+        try {
+            pdf = await pdfjsLib.getDocument({ data: fileBuffer }).promise;
+        } catch (e: any) {
+            if (e.name === 'PasswordException' || e.message?.includes('password') || e.message?.includes('No password given')) {
+                const hints = extractPossiblePasswords(file.name);
+                let opened = false;
+                for (const password of hints) {
+                    try {
+                        pdf = await pdfjsLib.getDocument({ data: fileBuffer, password }).promise;
+                        opened = true;
+                        break;
+                    } catch {
+                        continue;
+                    }
+                }
+                if (!opened) throw e;
+            } else {
+                throw e;
+            }
+        }
+
         const page = await pdf.getPage(pageNum);
         const viewport = page.getViewport({ scale: 1.5 });
         const canvas = document.createElement('canvas');
@@ -48,37 +85,12 @@ const DetailedExtractTab: React.FC = () => {
         setResults([]);
 
         const tasks: { file: File; page: number }[] = [];
-        const initialErrorResults: ExtractionResult[] = [];
+        const initialResults: ExtractionResult[] = [];
 
         for (const file of files) {
-            try {
-                const fileBuffer = await file.arrayBuffer();
-                // Carregamos o PDF para garantir que é válido, mas não iteramos todas as páginas
-                await pdfjsLib.getDocument({ data: fileBuffer }).promise;
-                
-                // Adiciona apenas a página 1 para a fila de processamento
-                tasks.push({ file, page: 1 });
-
-            } catch (e: any) {
-                console.error("Erro ao ler PDF:", file.name, e);
-                let errorMessage = 'Falha ao ler o arquivo PDF.';
-                
-                // Tratamento específico para erro de senha
-                if (e.name === 'PasswordException' || e.message?.includes('password') || e.message?.includes('No password given')) {
-                    errorMessage = 'Arquivo protegido por senha.';
-                }
-
-                initialErrorResults.push({
-                    id: `${file.name}-read-error-${Date.now()}`,
-                    file: file,
-                    pageNumber: 1,
-                    status: 'error',
-                    error: errorMessage
-                });
-            }
+            tasks.push({ file, page: 1 });
         }
-        setResults(initialErrorResults);
-
+        
         const remainingLimit = DAILY_LIMIT - dailyCount;
         if (tasks.length > 0 && remainingLimit <= 0) {
             alert(`Você atingiu o limite diário de ${DAILY_LIMIT} extrações.`);
@@ -109,18 +121,22 @@ const DetailedExtractTab: React.FC = () => {
             error: 'Limite diário excedido.',
         }));
         
-        setResults(current => [...current, ...resultsToProcess, ...resultsSkipped]);
+        setResults([...resultsToProcess, ...resultsSkipped]);
         
         let processedInThisBatch = 0;
         for (const result of resultsToProcess) {
             try {
                 const base64Image = await convertPdfToImage(result.file, result.pageNumber!);
-                // Call the DETAILED extraction service
                 const data = await extractDetailedInvoiceData(base64Image);
                 incrementDailyCount();
                 setResults(current => current.map(r => r.id === result.id ? { ...r, status: 'success', data } : r));
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+            } catch (error: any) {
+                // FIX: Cast error to any to access 'name' property safely in the catch block to resolve "Property 'name' does not exist on type 'unknown'" error.
+                const err = error as any;
+                let errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+                if (err.name === 'PasswordException' || errorMessage.includes('password') || errorMessage.includes('No password given')) {
+                    errorMessage = 'Arquivo protegido por senha.';
+                }
                 setResults(current => current.map(r => r.id === result.id ? { ...r, status: 'error', error: errorMessage } : r));
             } finally {
                 processedInThisBatch++;
@@ -159,7 +175,7 @@ const DetailedExtractTab: React.FC = () => {
         const worksheetData = successfulResults.map(r => {
             const d = r.data as DetailedInvoiceData;
             return {
-                'Arquivo': r.file.name, // Removido número da página pois sempre será 1
+                'Arquivo': r.file.name,
                 'Número da Nota': d.numeroNota,
                 'Data de Emissão': d.dataEmissao,
                 'CNPJ Prestador': d.cnpjPrestador,
