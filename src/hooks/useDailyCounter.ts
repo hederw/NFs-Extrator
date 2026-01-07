@@ -1,6 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
 
-export const DAILY_LIMIT = 250;
+import { useState, useCallback, useEffect } from 'react';
 
 const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
@@ -9,7 +8,11 @@ interface DailyCount {
   count: number;
 }
 
-export const useDailyCounter = (): [number, () => void, number] => {
+/**
+ * Hook para contar extrações diárias. 
+ * O limite foi removido conforme solicitado pelo usuário.
+ */
+export const useDailyCounter = (): [number, () => void] => {
   const [count, setCount] = useState<number>(0);
 
   const getStoredCount = useCallback((): DailyCount => {
@@ -47,5 +50,5 @@ export const useDailyCounter = (): [number, () => void, number] => {
     });
   }, []);
 
-  return [count, increment, DAILY_LIMIT];
+  return [count, increment];
 };

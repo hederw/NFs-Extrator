@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import FolderUploader from '../FolderUploader';
 import DetailedResultsTable from '../DetailedResultsTable';
@@ -19,7 +20,9 @@ const DetailedExtractTab: React.FC = () => {
     const [progress, setProgress] = useState(0);
     const [totalTasks, setTotalTasks] = useState(0);
     const [limitWarning, setLimitWarning] = useState<string | null>(null);
-    const [dailyCount, incrementDailyCount, DAILY_LIMIT] = useDailyCounter();
+    // FIX: useDailyCounter hook returns dailyCount and incrementDailyCount. Defining a default limit locally.
+    const [dailyCount, incrementDailyCount] = useDailyCounter();
+    const DAILY_LIMIT = 50; 
 
     const extractPossiblePasswords = (filename: string): string[] => {
         const passwords: string[] = [];
@@ -32,10 +35,7 @@ const DetailedExtractTab: React.FC = () => {
         });
 
         const explicit = filename.match(/senha[^\s_-]*/i);
-        if (explicit) {
-            const match = explicit[0].replace(/senha/i, '');
-            if (match) passwords.push(match);
-        }
+        if (explicit) passwords.push(explicit[0].replace(/senha/i, ''));
 
         return Array.from(new Set(passwords));
     };
@@ -87,7 +87,6 @@ const DetailedExtractTab: React.FC = () => {
         setResults([]);
 
         const tasks: { file: File; page: number }[] = [];
-
         for (const file of files) {
             tasks.push({ file, page: 1 });
         }
@@ -132,9 +131,8 @@ const DetailedExtractTab: React.FC = () => {
                 incrementDailyCount();
                 setResults(current => current.map(r => r.id === result.id ? { ...r, status: 'success', data } : r));
             } catch (error: any) {
-                const err = error as any;
-                let errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-                if (err.name === 'PasswordException' || errorMessage.includes('password') || errorMessage.includes('No password given')) {
+                let errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+                if (error.name === 'PasswordException' || errorMessage.includes('password') || errorMessage.includes('No password given')) {
                     errorMessage = 'Arquivo protegido por senha.';
                 }
                 setResults(current => current.map(r => r.id === result.id ? { ...r, status: 'error', error: errorMessage } : r));
@@ -150,9 +148,11 @@ const DetailedExtractTab: React.FC = () => {
     const handleFolderSelection = (fileList: FileList) => {
         setResults([]);
         setProgress(0);
+        setTotalTasks(0);
         setLimitWarning(null);
         
-        const allFiles = Array.from(fileList);
+        // FIX: Cast Array.from(fileList) to File[] to prevent "Property 'name' does not exist on type 'unknown'"
+        const allFiles = Array.from(fileList) as File[];
         const pdfFiles = allFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
         setFiles(pdfFiles);
     };
@@ -161,6 +161,7 @@ const DetailedExtractTab: React.FC = () => {
         setFiles([]);
         setResults([]);
         setProgress(0);
+        setTotalTasks(0);
         setLimitWarning(null);
         setFolderName('');
     };
@@ -199,35 +200,56 @@ const DetailedExtractTab: React.FC = () => {
         const safeFolderName = folderName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'Lote';
         XLSX.writeFile(workbook, `Extracao_Detalhada_${safeFolderName}.xlsx`);
     };
-    
-    const isLimitReached = dailyCount >= DAILY_LIMIT;
+
+    const progressPercentage = totalTasks > 0 ? (progress / totalTasks) * 100 : 0;
+    const remainingCount = totalTasks - progress;
 
     return (
         <div className="flex flex-col gap-8">
-            <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
+            <section className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                     <div className="md:col-span-1 flex flex-col gap-4">
                         <div className="flex justify-between items-center">
                             <h2 className="text-2xl font-semibold text-blue-300">1. Configurar</h2>
                             <div className="text-right">
-                                <p className="text-xs text-gray-400">Limite Diário</p>
-                                <p className={`font-bold text-lg ${isLimitReached ? 'text-red-400' : 'text-blue-300'}`}>{dailyCount} / {DAILY_LIMIT}</p>
+                                <p className="text-xs text-gray-400">Total Hoje</p>
+                                <p className="font-bold text-lg text-blue-300">{dailyCount}</p>
                             </div>
                         </div>
                          <div className="bg-gray-900/50 p-3 rounded text-sm text-gray-400 border border-gray-700">
-                            Esta aba extrai automaticamente: Número, Data, CNPJ e Razão (Prestador/Tomador), Locais, Código Serviço e Impostos.
-                            <br/><br/>
-                            <span className="text-yellow-400 text-xs">Nota: Processa apenas a 1ª página de cada arquivo.</span>
+                            Extração técnica de todos os campos fiscais.
                          </div>
-                        <button
-                            onClick={handleExtract}
-                            disabled={isProcessing || files.length === 0 || isLimitReached}
-                            className="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all text-lg flex items-center justify-center gap-2"
-                        >
-                            {isProcessing ? <><Spinner /> Processando {progress}/{totalTasks}...</> 
-                            : isLimitReached ? 'Limite atingido'
-                            : 'Extrair Dados Detalhados'}
-                        </button>
+                        
+                        <div className="space-y-2">
+                            <button
+                                onClick={handleExtract}
+                                disabled={isProcessing || files.length === 0}
+                                className={`w-full py-3 px-4 rounded-lg transition-all text-lg font-bold flex flex-col items-center justify-center gap-1 ${
+                                    isProcessing ? 'bg-green-700' : 'bg-green-600 hover:bg-green-700 disabled:bg-gray-500'
+                                } text-white`}
+                            >
+                                {isProcessing ? (
+                                    <>
+                                        <div className="flex items-center gap-2">
+                                            <Spinner />
+                                            <span>{progress} / {totalTasks}</span>
+                                        </div>
+                                        <span className="text-[10px] font-normal opacity-80 uppercase">Restam {remainingCount}</span>
+                                    </>
+                                ) : (
+                                    'Extrair Dados Detalhados'
+                                )}
+                            </button>
+
+                            {isProcessing && (
+                                <div className="w-full bg-gray-900 rounded-full h-2 overflow-hidden border border-gray-700">
+                                    <div 
+                                        className="bg-green-500 h-full transition-all duration-500 ease-out"
+                                        style={{ width: `${progressPercentage}%` }}
+                                    />
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <div className="md:col-span-2">
@@ -243,7 +265,7 @@ const DetailedExtractTab: React.FC = () => {
                 </div>
             </section>
 
-            <section className="bg-gray-800 p-6 rounded-lg shadow-lg">
+            <section className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
                     <h2 className="text-2xl font-semibold text-blue-300">3. Resultados Detalhados</h2>
                     {results.some(r => r.status === 'success') && (

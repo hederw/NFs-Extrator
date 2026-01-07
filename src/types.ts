@@ -35,6 +35,7 @@ export interface ExtractionResult {
   id: string;
   file: File;
   pageNumber?: number;
+  totalPages?: number;
   status: ExtractionStatus;
   data?: InvoiceData | DetailedInvoiceData;
   error?: string;
@@ -73,35 +74,42 @@ export interface GroundTruth {
   detectedColumns?: string[];
 }
 
-// FIX: Added ComparisonField, ComparisonResultItem and ComparisonHistoryItem to resolve import errors in HistoryTab and ComparisonResults
-export interface ComparisonField {
-  status: 'match' | 'mismatch' | 'missing';
+export interface GlobalProcessingState {
+    isActive: boolean;
+    current: number;
+    total: number;
+    filename: string;
+}
+
+// FIX: Added ComparisonFieldResult, ComparisonResultItem, and ComparisonHistoryItem to support comparison and history features.
+export interface ComparisonFieldResult {
   extracted: any;
   groundTruth: any;
+  status: 'match' | 'mismatch' | 'missing';
 }
 
 export interface ComparisonResultItem {
   numeroNota: string;
   comparisonStatus: 'perfect_match' | 'partial_mismatch' | 'not_found_in_truth';
   fields: {
-    prestador: ComparisonField;
-    dataEmissao: ComparisonField;
-    valorLiquido: ComparisonField;
+    prestador: ComparisonFieldResult;
+    dataEmissao: ComparisonFieldResult;
+    valorLiquido: ComparisonFieldResult;
   };
 }
 
 export interface ComparisonHistoryItem {
   id: string;
   timestamp: string;
+  results: ComparisonResultItem[];
   summary: {
+    total: number;
     matches: number;
     mismatches: number;
-    total: number;
+    notFound: number;
   };
-  results: ComparisonResultItem[];
 }
 
-// Resolução do erro TS2580 no Netlify
 declare global {
   namespace NodeJS {
     interface ProcessEnv {

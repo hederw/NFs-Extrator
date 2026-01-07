@@ -1,23 +1,34 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-// FIX: Corrected import to include DetailedInvoiceData
 import type { InvoiceData, DetailedInvoiceData } from '../types';
 
-// FIX: Initialized ai client using named parameters and directly referencing process.env.API_KEY
+// O cliente é inicializado usando a chave de API do ambiente
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const responseSchema = {
     type: Type.OBJECT,
     properties: {
-        prestador: { type: Type.STRING, description: 'Nome completo ou razão social do prestador de serviço.' },
-        numeroNota: { type: Type.STRING, description: 'O número da nota fiscal.' },
-        dataEmissao: { type: Type.STRING, description: 'A data de emissão no formato AAAA-MM-DD.' },
-        valorLiquido: { type: Type.NUMBER, description: 'O valor líquido da nota, como um número.' },
+        prestador: { 
+            type: Type.STRING, 
+            description: 'Nome completo, Razão Social ou Nome Fantasia do prestador de serviço.' 
+        },
+        numeroNota: { 
+            type: Type.STRING, 
+            description: 'O número da nota fiscal ou número do documento.' 
+        },
+        dataEmissao: { 
+            type: Type.STRING, 
+            description: 'A data de emissão no formato DD/MM/AAAA.' 
+        },
+        valorLiquido: { 
+            type: Type.NUMBER, 
+            description: 'O valor líquido ou total da nota, apenas números (ex: 1250.50).' 
+        },
     },
     required: ['prestador', 'numeroNota', 'dataEmissao', 'valorLiquido'],
 };
 
-// FIX: Added detailedResponseSchema for comprehensive extraction tasks
+// FIX: Added detailedResponseSchema for the extractDetailedInvoiceData function
 const detailedResponseSchema = {
     type: Type.OBJECT,
     properties: {
@@ -44,27 +55,15 @@ const detailedResponseSchema = {
 };
 
 const handleApiError = (error: unknown): string => {
-    let friendlyMessage = "Ocorreu um erro desconhecido durante a comunicação com a IA.";
-
-    if (error && typeof error === 'object' && 'message' in error) {
-        const errorMessage = (error as {message: string}).message;
-        if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-             friendlyMessage = "Limite de requisições da API atingido. Por favor, aguarde um momento e tente novamente.";
-        } else if (errorMessage.includes('json')) {
-             friendlyMessage = "A IA retornou um formato inesperado. Por favor, verifique o prompt ou tente novamente."
-        }
-        else {
-             friendlyMessage = `Falha na comunicação com a IA: ${errorMessage}`;
-        }
-    } else if (error instanceof Error) {
-        friendlyMessage = `Falha na comunicação com a IA: ${error.message}`;
-    }
-    
     console.error("Erro na API Gemini:", error);
-    return friendlyMessage;
+    if (error instanceof Error) {
+        if (error.message.includes('429')) return "Limite de requisições atingido. Tente novamente em instantes.";
+        return `Erro na extração: ${error.message}`;
+    }
+    return "Erro desconhecido na comunicação com a IA.";
 }
 
-export const extractInvoiceDataFromImage = async (base64Image: string, userPrompt: string): Promise<InvoiceData> => {
+export const extractInvoiceDataFromImage = async (base64Image: string, userPrompt: string = ''): Promise<InvoiceData> => {
     const imagePart = {
         inlineData: {
             mimeType: 'image/png',
@@ -73,12 +72,17 @@ export const extractInvoiceDataFromImage = async (base64Image: string, userPromp
     };
 
     const textPart = {
-        text: `Com base na imagem da nota fiscal, extraia as seguintes informações em formato JSON. Instruções adicionais: ${userPrompt}`
+        text: `Extraia os dados desta nota fiscal brasileira. 
+        - Prestador: Procure por Razão Social ou Nome do Emitente.
+        - Número: Procure por Número da Nota ou NFS-e.
+        - Data: Procure por Data de Emissão.
+        - Valor Líquido: Procure por Valor Líquido, Valor Total dos Serviços ou Total da Nota.
+        
+        Instruções extras do usuário: ${userPrompt}`
     };
 
     try {
         const response = await ai.models.generateContent({
-            // FIX: Using gemini-3-flash-preview as recommended for text/extraction tasks
             model: 'gemini-3-flash-preview',
             contents: { parts: [imagePart, textPart] },
             config: {
@@ -87,24 +91,16 @@ export const extractInvoiceDataFromImage = async (base64Image: string, userPromp
             }
         });
 
-        // FIX: Replaced method call with property access for response.text
         const jsonText = response.text;
-        if (!jsonText) throw new Error("A IA retornou uma resposta vazia.");
+        if (!jsonText) throw new Error("Resposta vazia da IA.");
         
-        const parsedData = JSON.parse(jsonText.trim()) as InvoiceData;
-
-        if (!parsedData.prestador || !parsedData.numeroNota || !parsedData.dataEmissao || parsedData.valorLiquido == null) {
-            throw new Error("Resposta da IA está incompleta ou mal formatada.");
-        }
-
-        return parsedData;
-
+        return JSON.parse(jsonText.trim()) as InvoiceData;
     } catch (error) {
        throw new Error(handleApiError(error));
     }
 };
 
-// FIX: Added missing extractDetailedInvoiceData function implementation
+// FIX: Exported extractDetailedInvoiceData to resolve the missing member error in DetailedExtractTab
 export const extractDetailedInvoiceData = async (base64Image: string): Promise<DetailedInvoiceData> => {
     const imagePart = {
         inlineData: {
@@ -114,22 +110,7 @@ export const extractDetailedInvoiceData = async (base64Image: string): Promise<D
     };
 
     const textPart = {
-        text: `Analise a nota fiscal e extraia EXATAMENTE os seguintes campos em formato JSON:
-        1. Número da Nota
-        2. Data de Emissão
-        3. CNPJ do Prestador
-        4. Razão Social do Prestador
-        5. CNPJ do Tomador
-        6. Razão Social do Tomador
-        7. Local de Prestação de Serviço
-        8. Local de Incidência do ISSQN
-        9. Código do Serviço
-        10. Valor Total da Nota
-        11. Alíquota ISSQN
-        12. INSS
-        13. ISS Retido
-        
-        IMPORTANTE: Se algum valor monetário ou percentual não estiver explícito na imagem, use 0. Se algum campo de texto não for encontrado, use uma string vazia ("").`
+        text: `Analise a nota fiscal brasileira e extraia EXATAMENTE os seguintes campos em formato JSON conforme o esquema fornecido.`
     };
 
     try {
@@ -161,33 +142,14 @@ export const generateLayoutPromptFromImage = async (base64Image: string): Promis
         },
     };
 
-    const metaPrompt = `
-      Analise a imagem desta nota fiscal. Seu objetivo é criar um prompt de texto eficaz para que OUTRO modelo de IA possa extrair as seguintes informações:
-      - 'prestador': O nome ou razão social do prestador de serviços.
-      - 'numeroNota': O número principal da nota fiscal.
-      - 'dataEmissao': A data em que a nota foi emitida.
-      - 'valorLiquido': O valor final ou total líquido da nota.
+    const metaPrompt = `Analise a estrutura desta nota fiscal e crie um guia curto de onde encontrar o Prestador, Número, Data e Valor Total.`;
 
-      Para cada campo, descreva sua localização precisa e quaisquer rótulos ou textos próximos que ajudem a identificá-lo.
-      Seja conciso e direto.
-    `;
-
-    const textPart = { text: metaPrompt };
-
-     try {
+    try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: { parts: [imagePart, textPart] },
+            contents: { parts: [imagePart, { text: metaPrompt }] },
         });
-
-        // FIX: Corrected text extraction using property access
-        const generatedPrompt = response.text;
-        if (!generatedPrompt) {
-            throw new Error("A IA não conseguiu gerar um prompt. A imagem pode estar ilegível.");
-        }
-        
-        return generatedPrompt.trim();
-
+        return response.text?.trim() || "Não foi possível gerar instruções automáticas.";
     } catch (error) {
        throw new Error(handleApiError(error));
     }

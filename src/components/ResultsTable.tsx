@@ -94,7 +94,6 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults, valida
   
   const EditableCell: React.FC<{result: ExtractionResult | StoredExtractionResult, field: keyof InvoiceData, type?: 'text' | 'number'}> = ({result, field, type = 'text'}) => {
     const isEditable = !!setResults;
-    // Fix TS7053: Cast explicitamente para InvoiceData para acessar propriedades dinâmicas
     const data = result.data as InvoiceData | undefined;
     const value = data ? data[field] : undefined;
 
@@ -129,7 +128,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults, valida
       <table className="min-w-full text-sm text-left text-gray-300">
         <thead className="text-xs text-gray-400 uppercase bg-gray-700">
           <tr>
-            <th scope="col" className="px-4 py-3">Arquivo</th>
+            <th scope="col" className="px-4 py-3">Arquivo / Pág</th>
             <th scope="col" className="px-4 py-3">Status</th>
             <th scope="col" className="px-4 py-3">Validação</th>
             <th scope="col" className="px-4 py-3">Prestador</th>
@@ -142,19 +141,24 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, setResults, valida
           {results.map((result) => {
             const isStored = !('file' in result);
             const fileName = isStored ? (result as StoredExtractionResult).fileName : (result as ExtractionResult).file.name;
-            const displayName = result.pageNumber ? `${fileName} (pág. ${result.pageNumber})` : fileName;
+            const pageInfo = result.pageNumber ? `Pág ${result.pageNumber}` : '';
+            const totalInfo = (result as ExtractionResult).totalPages ? `de ${(result as ExtractionResult).totalPages}` : '';
+            const displayName = fileName;
             const validation = validationStatus?.[result.id];
 
             return (
                 <tr key={result.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                 <td className="px-4 py-3 font-medium text-white whitespace-nowrap truncate max-w-xs">
-                    {isStored ? (
-                        <span>{displayName}</span>
-                    ) : (
-                        <a href={pdfUrls[result.id]} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                            {displayName}
-                        </a>
-                    )}
+                    <div className="flex flex-col">
+                        {isStored ? (
+                            <span>{displayName}</span>
+                        ) : (
+                            <a href={pdfUrls[result.id]} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline truncate">
+                                {displayName}
+                            </a>
+                        )}
+                        <span className="text-[10px] text-gray-500 font-bold">{pageInfo} {totalInfo}</span>
+                    </div>
                 </td>
                 <td className="px-4 py-3"><StatusIndicator status={result.status} /></td>
                 <td className="px-4 py-3"><ValidationBadge validation={validation} /></td>
